@@ -217,7 +217,8 @@ async function process(request,env,ctx){
  if(method==='OPTIONS')return new Response(null,{status:allowedOrigin?204:403,headers});
  if(method==='GET'&&path==='/healthz'){
   await initialize(env);
-  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true'});
+  const count=await one(d,"SELECT COUNT(*) AS total FROM offers WHERE id IN ("+CATALOG_DRAFTS.map(()=>'?').join(',')+")",...CATALOG_DRAFTS.map(x=>x.id));
+  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67});
  }
  if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
   const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
