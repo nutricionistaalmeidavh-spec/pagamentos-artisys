@@ -48,7 +48,7 @@ test('status preserva links Drive apenas no endpoint autenticado e não aprova a
  assert.equal(j.items.find(x=>x.id==='obra-windows').source,'github-actions');
  assert.equal(j.items.find(x=>x.id==='obra-windows').expectedSize,125774266);
  assert.match(j.items.find(x=>x.id==='obra-windows').sourceUrl,/actions\/runs\/37495882884/);
- assert.ok(j.items.filter(x=>x.source==='google-drive').every(x=>x.sourceUrl.startsWith('https://drive.google.com/file/d/')));
+ assert.ok(j.items.every(x=>x.sourceUrl.startsWith('https://github.com/nutricionistaalmeidavh-spec/')));
 });
 test('Obra 2.1.0 aceita somente tamanho exato do binário extraído, nunca ZIP ou v1.0.19',async()=>{
  const b=mockBucket(),env={PAGAMENTO_ARTISYS_ARQUIVOS:b};
@@ -111,6 +111,6 @@ test('não aprova instalador com tamanho correto mas hash não atestado',async()
 });
 test('todos os 8 binários têm hash real e proveniência definida',()=>{
  assert.ok(SYSTEM_RELEASES.every(x=>/^[0-9a-f]{64}$/.test(x.sha256)));
- assert.equal(SYSTEM_RELEASES.filter(x=>x.source==='github-actions').length,1);
- assert.equal(SYSTEM_RELEASES.filter(x=>x.driveId).length,7);
+ assert.ok(SYSTEM_RELEASES.every(x=>['github-actions','github-release'].includes(x.source)));
+ assert.ok(SYSTEM_RELEASES.every(x=>x.sourceRepo?.startsWith('nutricionistaalmeidavh-spec/')));
 });
