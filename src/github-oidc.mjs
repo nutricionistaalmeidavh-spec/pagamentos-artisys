@@ -8,7 +8,6 @@ const ISSUER='https://token.actions.githubusercontent.com';
 const JWKS_URL=ISSUER+'/.well-known/jwks';
 const ALLOWLIST=new Map([
  ['nutricionistaalmeidavh-spec/pagamentos-artisys','.github/workflows/sync-system-releases-r2.yml'],
- ['nutricionistaalmeidavh-spec/sistemafinanceiro','.github/workflows/financeiro-to-r2.yml'],
 ]);
 const toBytes=value=>{
  const padded=value.replace(/-/g,'+').replace(/_/g,'/');
