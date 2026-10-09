@@ -57,6 +57,15 @@ class OidcClient:
             raise SyncError("Falha ao obter OIDC do GitHub") from exc
         self.token = result["value"]
         self.issued = time.monotonic()
+        # Claims (never the signed JWT) are safe operational diagnostics.
+        import base64
+        try:
+            encoded = self.token.split(".")[1]
+            claims = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+            keys = ("iss", "aud", "repository", "sub", "ref", "workflow_ref", "event_name")
+            print("OIDC metadata: " + json.dumps({k: claims.get(k) for k in keys},sort_keys=True),flush=True)
+        except Exception:
+            print("OIDC metadata indisponíveis para diagnóstico",flush=True)
         return self.token
 
     def call(self, path, method="GET", payload=None, *, json_body=True, attempts=4):
@@ -105,7 +114,7 @@ class OidcClient:
                 # this workflow. Wait for the signed-OIDC release endpoint.
                 if time.monotonic() + 15 >= deadline:
                     raise SyncError("Novo Worker com autenticação OIDC não ficou disponível") from exc
-                print("Aguardando deploy do Worker e rota OIDC...", flush=True)
+                print("Aguardando resposta OIDC do Worker: " + str(exc), flush=True)
                 time.sleep(15)
 
 
