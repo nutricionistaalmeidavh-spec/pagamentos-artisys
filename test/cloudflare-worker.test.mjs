@@ -10,7 +10,7 @@ test('sem D1 o worker falha fechado',async()=>{
 });
 test('painel usa assets do worker',async()=>{
  let path='';
- const env={ASSETS:{fetch:async req=>{path=new URL(req.url).pathname;return new Response('ok');}}};
+ const env={PAGAMENTO_ARTISYS_ASSETS:{fetch:async req=>{path=new URL(req.url).pathname;return new Response('ok');}}};
  const res=await worker.fetch(new Request('https://example.org/admin'),env,{waitUntil(){}});
  assert.equal(res.status,200);
  assert.equal(path,'/admin.html');
