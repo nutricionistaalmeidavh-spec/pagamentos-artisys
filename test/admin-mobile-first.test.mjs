@@ -37,8 +37,8 @@ test('pagamento e entrega são apresentados em estados distintos',()=>{
 });
 test('ações críticas exigem confirmação e possuem feedback de erro',()=>{
  assert.match(js,/confirmAction/);
- assert.match(js,/aria-modal="true"/);
- assert.match(js,/aria-live/);
+ assert.match(html,/aria-modal="true"/);
+ assert.match(html,/aria-live/);
  assert.match(js,/disabled=true/);
  assert.match(js,/showError/);
  assert.doesNotMatch(js,/\bwindow\.confirm\s*\(/);
@@ -48,4 +48,13 @@ test('ofertas incluem preço seguro e cupons preservados no painel',()=>{
  assert.match(js,/percentOff/);
  assert.match(js,/deliveryMode/);
  assert.match(js,/coupon-form/);
+});
+
+test('Worker encaminha o CSS dedicado do admin ao binding de assets',async()=>{
+ const paths=[];
+ const env={PAGAMENTO_ARTISYS_ASSETS:{fetch:async request=>{paths.push(new URL(request.url).pathname);return new Response('admin-css',{status:200});}}};
+ const worker=(await import('../src/cloudflare-worker.mjs')).default;
+ const res=await worker.fetch(new Request('https://example.org/assets/admin.css'),env,{waitUntil(){}});
+ assert.equal(res.status,200);
+ assert.ok(paths.includes('/admin.css'));
 });
