@@ -19,7 +19,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from sync_system_releases import MANIFEST, SyncError, obtain, validate
+if __package__:
+    from .sync_system_releases import MANIFEST, SyncError, obtain, validate
+else:
+    from sync_system_releases import MANIFEST, SyncError, obtain, validate
 
 AUDIENCE = "artisys-release-sync-r2"
 ROOT = "https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev"
