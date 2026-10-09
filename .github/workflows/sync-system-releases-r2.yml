@@ -30,7 +30,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Exportar manifesto canônico
-        run: node scripts/export-release-manifest.mjs > .release-sync/manifest.json
+        run: mkdir -p .release-sync
+        node scripts/export-release-manifest.mjs > .release-sync/manifest.json
       - name: Verificar hashes, origens e IDs (sem credenciais)
         run: python scripts/sync_system_releases.py --validate-only
 
@@ -49,7 +50,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Exportar manifesto
-        run: node scripts/export-release-manifest.mjs > .release-sync/manifest.json
+        run: mkdir -p .release-sync
+        node scripts/export-release-manifest.mjs > .release-sync/manifest.json
       - name: Instalar cliente S3 compatível com R2
         run: python -m pip install --disable-pip-version-check 'boto3>=1.35,<2'
       - name: Preflight — exigir secrets somente no GitHub
