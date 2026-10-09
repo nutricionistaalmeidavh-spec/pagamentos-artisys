@@ -183,7 +183,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="artisys-github-to-r2-") as workspace:
         for entry in pending:
             with tempfile.TemporaryDirectory(dir=workspace, prefix="file-") as folder:
-                binary = obtain(entry, pathlib.Path(folder), None)
+                # Ephemeral built-in GitHub token, not a PAT or repository secret.
+                binary = obtain(entry, pathlib.Path(folder), os.environ.get('GITHUB_TOKEN') or None)
                 upload(client, entry, binary)
     remaining = checked_status(client.status(timeout_seconds=30), entries)
     if remaining:
