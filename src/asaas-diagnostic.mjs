@@ -8,8 +8,11 @@ function safeProviderStatus(error){
  const match=/^asaas_http_([0-9]{3})$/.exec(String(error?.message||''));
  if(match){
   const code=Number(match[1]);
+  if(code===400)return 'bad_request';
   if(code===401)return 'unauthorized';
   if(code===403)return 'forbidden';
+  if(code===404)return 'not_found';
+  if(code===422)return 'unprocessable';
   if(code===429)return 'rate_limited';
   if(code>=500)return 'provider_unavailable';
   return 'provider_http_error';
@@ -17,6 +20,10 @@ function safeProviderStatus(error){
  if(error?.message==='asaas_not_configured')return 'key_missing';
  if(error?.message==='asaas_invalid_host')return 'invalid_api_host';
  return 'provider_unavailable';
+}
+function providerHttpCode(error){
+ const match=/^asaas_http_([0-9]{3})$/.exec(String(error?.message||''));
+ return match?Number(match[1]):null;
 }
 function webhookEndpoint(url){
  try{
@@ -26,7 +33,7 @@ function webhookEndpoint(url){
  }catch{return null;}
 }
 function emptyWebhook(){
- return {status:'not_checked',found:false,enabled:null,interrupted:null,urlMatches:false,eventsConfigured:false,missingEvents:[...REQUIRED_CHECKOUT_EVENTS]};
+ return {status:'not_checked',found:false,enabled:null,interrupted:null,urlMatches:false,eventsConfigured:false,missingEvents:[]};
 }
 
 /** Read-only diagnostics. Never return provider records, access tokens, wallet IDs, or other private data. */
@@ -35,6 +42,7 @@ export async function diagnoseAsaas(env,fetchImpl){
   environment:'unconfigured',
   apiAuthenticated:false,
   apiStatus:'not_checked',
+  apiHttpCode:null,
   gatewayConfigured:!!env.ASAAS_API_KEY,
   webhookTokenConfigured:typeof env.ASAAS_WEBHOOK_TOKEN==='string'&&env.ASAAS_WEBHOOK_TOKEN.length>=32,
   webhookTokenVerified:false, // GET /webhooks cannot prove the secret matches the receiver.
@@ -51,7 +59,7 @@ export async function diagnoseAsaas(env,fetchImpl){
  try{
   await asaasRequest(env,fetchImpl,'/wallets/',{method:'GET'});
   output.apiAuthenticated=true;output.apiStatus='authenticated';
- }catch(e){output.apiStatus=safeProviderStatus(e);return output;}
+ }catch(e){output.apiStatus=safeProviderStatus(e);output.apiHttpCode=providerHttpCode(e);return output;}
  try{
   const matching=[];
   for(let offset=0;offset<=400;offset+=100){
@@ -82,6 +90,7 @@ export async function diagnoseAsaas(env,fetchImpl){
    &&output.webhook.urlMatches;
  }catch(e){
   output.webhook.status=safeProviderStatus(e);
+  output.webhook.httpCode=providerHttpCode(e);
  }
  return output;
 }
