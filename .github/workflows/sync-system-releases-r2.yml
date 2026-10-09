@@ -1,0 +1,74 @@
+name: ArtiSys · Sincronizar instaladores no R2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-system-releases-r2.yml'
+      - 'src/system-releases.mjs'
+      - 'scripts/export-release-manifest.mjs'
+      - 'scripts/sync_system_releases.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artisys-system-releases-r2
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validar manifesto — 4 sistemas / 8 instaladores
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exportar manifesto canônico
+        run: node scripts/export-release-manifest.mjs > .release-sync/manifest.json
+      - name: Verificar hashes, origens e IDs (sem credenciais)
+        run: python scripts/sync_system_releases.py --validate-only
+
+  upload:
+    name: Upload R2 privado — sem publicar ofertas
+    needs: validate
+    if: ${{ github.ref == 'refs/heads/main' && vars.ARTISYS_RELEASE_SYNC_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: artisys-releases
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exportar manifesto
+        run: node scripts/export-release-manifest.mjs > .release-sync/manifest.json
+      - name: Instalar cliente S3 compatível com R2
+        run: python -m pip install --disable-pip-version-check 'boto3>=1.35,<2'
+      - name: Preflight — exigir secrets somente no GitHub
+        shell: bash
+        env:
+          ARTISYS_R2_CONFIG_JSON: ${{ secrets.ARTISYS_R2_CONFIG_JSON }}
+          ARTISYS_GDRIVE_OAUTH_JSON: ${{ secrets.ARTISYS_GDRIVE_OAUTH_JSON }}
+          ARTISYS_SOURCE_GITHUB_TOKEN: ${{ secrets.ARTISYS_SOURCE_GITHUB_TOKEN }}
+        run: |
+          for secret in ARTISYS_R2_CONFIG_JSON ARTISYS_GDRIVE_OAUTH_JSON ARTISYS_SOURCE_GITHUB_TOKEN; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::Secret $secret ausente. Configure em Settings → Secrets and variables → Actions."
+              exit 1
+            fi
+          done
+      - name: Baixar, checar SHA-256 e importar os oito arquivos
+        env:
+          ARTISYS_R2_CONFIG_JSON: ${{ secrets.ARTISYS_R2_CONFIG_JSON }}
+          ARTISYS_GDRIVE_OAUTH_JSON: ${{ secrets.ARTISYS_GDRIVE_OAUTH_JSON }}
+          ARTISYS_SOURCE_GITHUB_TOKEN: ${{ secrets.ARTISYS_SOURCE_GITHUB_TOKEN }}
+        run: python scripts/sync_system_releases.py
