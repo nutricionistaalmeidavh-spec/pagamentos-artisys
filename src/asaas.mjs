@@ -12,7 +12,8 @@ export async function asaasRequest(env, fetchImpl, path, init = {}) {
   const response = await fetchImpl(base + path, {
     ...init, headers: {
       accept: 'application/json', 'content-type': 'application/json',
-      access_token: env.ASAAS_API_KEY, ...init.headers
+      access_token: env.ASAAS_API_KEY, ...init.headers,
+      'User-Agent': 'PagamentoArtiSys/0.2.0 (CloudflareWorkers)'
     },
     signal: AbortSignal.timeout(12000)
   });

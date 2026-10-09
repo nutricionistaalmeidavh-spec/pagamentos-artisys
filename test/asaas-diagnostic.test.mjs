@@ -117,3 +117,39 @@ test('endpoint autorizado devolve apenas diagnóstico e não toca em cobranças'
   assert.doesNotMatch(JSON.stringify(out),/secret-wallet|qa-api-token|must-not-appear/);
  }finally{globalThis.fetch=original;}
 });
+
+
+test('todas as requisições ao Asaas identificam o aplicativo com User-Agent',async()=>{
+ const requests=[];
+ const fetchImpl=async(url,init={})=>{
+  requests.push({url:String(url),headers:init.headers,method:init.method||'GET'});
+  if(String(url).endsWith('/wallets/'))return Response.json({walletId:'sensitive-wallet'});
+  return Response.json({data:[goodWebhook()],hasMore:false});
+ };
+ const out=await diagnoseAsaas(env(),fetchImpl);
+ assert.equal(out.configurationReady,true);
+ assert.equal(requests.length,2);
+ for(const req of requests){
+  assert.equal(req.method,'GET');
+  assert.match(req.headers['User-Agent'],/^PagamentoArtiSys\/[0-9.]+ \(/);
+  assert.equal(req.headers.access_token,'qa-api-token-never-expose');
+ }
+});
+test('erro HTTP 400 é identificado claramente sem devolver conteúdo sensível',async()=>{
+ const {fetchImpl}=createFetch([],400);
+ const out=await diagnoseAsaas(env(),fetchImpl);
+ assert.equal(out.apiAuthenticated,false);
+ assert.equal(out.apiStatus,'bad_request');
+ assert.equal(out.apiHttpCode,400);
+ assert.equal(out.webhook.status,'not_checked');
+ assert.deepEqual(out.webhook.missingEvents,[]);
+ assert.doesNotMatch(JSON.stringify(out),/secret provider response|qa-api-token/);
+});
+test('erro HTTP 404 identifica endpoint e não o interpreta como problema de webhook',async()=>{
+ const {fetchImpl}=createFetch([],404);
+ const out=await diagnoseAsaas(env(),fetchImpl);
+ assert.equal(out.apiStatus,'not_found');
+ assert.equal(out.apiHttpCode,404);
+ assert.equal(out.webhook.status,'not_checked');
+ assert.deepEqual(out.webhook.missingEvents,[]);
+});

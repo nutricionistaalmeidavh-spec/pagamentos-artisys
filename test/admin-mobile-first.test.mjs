@@ -63,3 +63,15 @@ test('formulários dinâmicos impedem submit nativo e não vazam tokens/valores 
  assert.match(js,/form\.addEventListener\('submit',e=>\{e\.preventDefault\(\);wizardNext\(form\);/);
  assert.match(js,/form\.addEventListener\('submit',e=>\{e\.preventDefault\(\);saveCoupon\(form\);/);
 });
+
+
+test('diagnóstico não declara ausência de eventos quando consulta do webhook não ocorreu',()=>{
+ assert.match(js,/hook\.found\s*\?\s*'Faltando:/);
+ assert.match(js,/Não verificados/);
+ assert.match(js,/Requisição inválida \(400\)/);
+ assert.match(js,/Endpoint não encontrado \(404\)/);
+});
+test('diagnóstico mobile não transforma eventos longos em pills sem limite',()=>{
+ assert.match(css,/\.data-list\s+dd\s+\.label/);
+ assert.match(css,/overflow-wrap:\s*anywhere/);
+});
