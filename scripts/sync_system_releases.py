@@ -179,14 +179,13 @@ def r2_client(config: dict):
 
 
 def remote_matches(client, bucket: str, entry: dict) -> bool:
-    from botocore.exceptions import ClientError
     try:
         obj = client.head_object(Bucket=bucket, Key=entry["key"])
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code")
+    except Exception as exc:
+        code = getattr(exc, "response", {}).get("Error", {}).get("Code")
         if code in ("404", "NoSuchKey", "NotFound"):
             return False
-        raise SyncError(f"R2 HEAD falhou para {entry['id']} ({code})") from None
+        raise SyncError(f"R2 HEAD falhou para {entry['id']} ({code or 'unknown'})") from None
     if int(obj["ContentLength"]) != entry["size"] or obj.get("Metadata", {}).get("sha256") != entry["sha256"]:
         raise SyncError(f"Objeto R2 preexistente diferente: {entry['id']}. Não sobrescrevi.")
     print(f"Já íntegro no R2: {entry['id']}", flush=True)
