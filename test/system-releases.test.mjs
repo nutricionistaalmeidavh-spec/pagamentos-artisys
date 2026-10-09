@@ -114,3 +114,21 @@ test('todos os 8 binários têm hash real e proveniência definida',()=>{
  assert.ok(SYSTEM_RELEASES.every(x=>['github-actions','github-release'].includes(x.source)));
  assert.ok(SYSTEM_RELEASES.every(x=>x.sourceRepo?.startsWith('nutricionistaalmeidavh-spec/')));
 });
+
+test('versões do PDV vêm do GitHub correto, sem Classic nem Drive',()=>{
+ const byId=new Map(SYSTEM_RELEASES.map(x=>[x.id,x]));
+ for(const id of ['pdv-nexus-win10','pdv-nexus-win8','pdv-nexus-win7']){
+  const item=byId.get(id);
+  assert.equal(item.version,'2.0.1');
+  assert.equal(item.source,'github-release');
+  assert.equal(item.sourceRepo,'nutricionistaalmeidavh-spec/PDVNexus');
+  assert.ok(item.sourceUrl.includes('/releases/download/pdv-v2.0.1/'));
+ }
+ assert.equal(byId.get('pdv-artisys-windows').version,'2.0.7');
+ assert.equal(byId.get('pdv-artisys-windows').sourceRepo,'nutricionistaalmeidavh-spec/PDV-ARTISYS');
+ for(const id of ['pdv-artisys-mac-intel','pdv-artisys-mac-silicon']){
+  assert.equal(byId.get(id).version,'2.0.1');
+  assert.equal(byId.get(id).source,'github-actions');
+ }
+ assert.ok(SYSTEM_RELEASES.every(x=>!x.driveId&&!x.sourceUrl.includes('drive.google.com')));
+});
