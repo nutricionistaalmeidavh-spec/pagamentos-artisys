@@ -32,9 +32,9 @@ const publicOrder=row=>row&&Object.fromEntries(Object.entries(selection).map(([k
 const query=(db,sql,...args)=>db.prepare(sql).bind(...args);
 let readyDb=null,readyPromise=null;
 async function initialize(env){
- if(!env.DB)throw fail('d1_not_configured',503);
- if(readyDb!==env.DB){readyDb=env.DB;readyPromise=null;}
- if(!readyPromise)readyPromise=env.DB.batch(schema.map(sql=>env.DB.prepare(sql))).catch(e=>{readyPromise=null;throw e;});
+ if(!env.PAGAMENTO_ARTISYS_DB)throw fail('d1_not_configured',503);
+ if(readyDb!==env.PAGAMENTO_ARTISYS_DB){readyDb=env.PAGAMENTO_ARTISYS_DB;readyPromise=null;}
+ if(!readyPromise)readyPromise=env.PAGAMENTO_ARTISYS_DB.batch(schema.map(sql=>env.PAGAMENTO_ARTISYS_DB.prepare(sql))).catch(e=>{readyPromise=null;throw e;});
  await readyPromise;
 }
 const read=async (request)=>{const raw=await request.text();if(raw.length>131072)throw fail('payload_too_large',413);try{return raw?JSON.parse(raw):{};}catch{throw fail('invalid_json');}};
@@ -47,7 +47,7 @@ async function admin(request,env){
  if(!await safeEqual(headerToken(request),env.ADMIN_TOKEN))throw fail('unauthorized',401);
 }
 async function authorizedOrder(request,env,id){
- const found=await one(env.DB,'SELECT * FROM orders WHERE id=?',id);
+ const found=await one(env.PAGAMENTO_ARTISYS_DB,'SELECT * FROM orders WHERE id=?',id);
  if(!found||!await safeEqual(await digest(headerToken(request)),found.access_hash))throw fail('order_not_found',404);
  return found;
 }
@@ -55,7 +55,7 @@ async function markPaid(env,order,origin,proof=null){
  if(order.status==='paid')return;
  if(order.status!=='pending')throw fail('invalid_transition',409);
  if(proof&&order.payment_provider!=='asaas')throw fail('provider_mismatch',409);
- const d=env.DB,t=now(),paymentId=proof?.paymentId||null;
+ const d=env.PAGAMENTO_ARTISYS_DB,t=now(),paymentId=proof?.paymentId||null;
  const taken=paymentId?await one(d,'SELECT id FROM orders WHERE provider_payment_id=?',paymentId):null;
  if(taken&&taken.id!==order.id)throw fail('payment_already_consumed',409);
  const updated=await exec(d,"UPDATE orders SET status='paid',checkout_state='paid',provider_payment_id=COALESCE(?,provider_payment_id),subscription_id=COALESCE(?,subscription_id),fulfillment_status='pending',updated_at=? WHERE id=? AND status='pending'",paymentId,proof?.subscriptionId||null,t,order.id);
@@ -64,7 +64,7 @@ async function markPaid(env,order,origin,proof=null){
  await audit(d,'payment_confirmed',order.id,{origin,paymentId});
 }
 async function enqueue(env,order,action){
- await exec(env.DB,"INSERT OR IGNORE INTO fulfillments(id,order_id,action,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?)",uuid(),order.id,action,now(),now());
+ await exec(env.PAGAMENTO_ARTISYS_DB,"INSERT OR IGNORE INTO fulfillments(id,order_id,action,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?)",uuid(),order.id,action,now(),now());
 }
 function connectorFor(env,product){
  let conf={};try{conf=isObj(JSON.parse(env.PRODUCT_CONNECTORS_JSON||'{}'));}catch{}
@@ -75,28 +75,28 @@ async function hmac(secret,input){
  return Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,bytes(input)))).map(v=>v.toString(16).padStart(2,'0')).join('');
 }
 async function deliver(env,job){
- const order=await one(env.DB,'SELECT * FROM orders WHERE id=?',job.order_id);
+ const order=await one(env.PAGAMENTO_ARTISYS_DB,'SELECT * FROM orders WHERE id=?',job.order_id);
  if(!order)throw Error('order_missing');
  if(job.action!=='revoke'&&order.status!=='paid')throw Error('order_not_paid');
  if(job.action==='activate'&&order.delivery_mode==='manual'){
-  await exec(env.DB,"UPDATE fulfillments SET status='awaiting_manual',updated_at=? WHERE id=?",now(),job.id);
-  await exec(env.DB,"UPDATE orders SET fulfillment_status='awaiting_manual' WHERE id=?",order.id);return;
+  await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='awaiting_manual',updated_at=? WHERE id=?",now(),job.id);
+  await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='awaiting_manual' WHERE id=?",order.id);return;
  }
  if(job.action==='activate'&&order.delivery_mode==='download'){
-  if(!validArtifact(order.artifact_name)||!env.FILES){
-   await exec(env.DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='r2_or_artifact_not_configured',updated_at=? WHERE id=?",now(),job.id);
-   await exec(env.DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
+  if(!validArtifact(order.artifact_name)||!env.PAGAMENTO_ARTISYS_ARQUIVOS){
+   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='r2_or_artifact_not_configured',updated_at=? WHERE id=?",now(),job.id);
+   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
   }
-  const obj=await env.FILES.head('releases/'+order.artifact_name);
+  const obj=await env.PAGAMENTO_ARTISYS_ARQUIVOS.head('releases/'+order.artifact_name);
   if(!obj){
-   await exec(env.DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='artifact_not_found',updated_at=? WHERE id=?",now(),job.id);
-   await exec(env.DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
+   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='artifact_not_found',updated_at=? WHERE id=?",now(),job.id);
+   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
   }
  }else{
   const target=connectorFor(env,order.product_id),origin=String(env.CONNECTOR_ALLOWED_ORIGINS||'').split(',').map(x=>x.trim());
   if(!target.url||!target.secret){
-   await exec(env.DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='connector_missing',updated_at=? WHERE id=?",now(),job.id);
-   if(job.action==='activate')await exec(env.DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);
+   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='connector_missing',updated_at=? WHERE id=?",now(),job.id);
+   if(job.action==='activate')await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);
    return;
   }
   const uri=new URL(target.url);
@@ -108,12 +108,12 @@ async function deliver(env,job){
   const confirmation=await response.json().catch(()=>null);
   if(!response.ok||confirmation?.accepted!==true)throw Error('connector_delivery_unconfirmed');
  }
- await exec(env.DB,"UPDATE fulfillments SET status='delivered',last_error=NULL,updated_at=? WHERE id=?",now(),job.id);
- if(job.action==='activate')await exec(env.DB,"UPDATE orders SET fulfillment_status='delivered' WHERE id=?",order.id);
- await audit(env.DB,'delivery_confirmed',order.id,{action:job.action});
+ await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='delivered',last_error=NULL,updated_at=? WHERE id=?",now(),job.id);
+ if(job.action==='activate')await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='delivered' WHERE id=?",order.id);
+ await audit(env.PAGAMENTO_ARTISYS_DB,'delivery_confirmed',order.id,{action:job.action});
 }
 async function eventHandler(env,event){
- const d=env.DB,type=event.event_type,payload=JSON.parse(event.payload);
+ const d=env.PAGAMENTO_ARTISYS_DB,type=event.event_type,payload=JSON.parse(event.payload);
  const checkout=isObj(payload.checkout);
  const order=checkout.id?await one(d,'SELECT * FROM orders WHERE checkout_id=?',String(checkout.id)):null;
  if(type==='CHECKOUT_PAID'){
@@ -154,7 +154,7 @@ async function eventHandler(env,event){
  }
 }
 async function queueWorker(env){
- const d=env.DB,clock=Date.now(),stamp=now();
+ const d=env.PAGAMENTO_ARTISYS_DB,clock=Date.now(),stamp=now();
  const events=await rows(d,"SELECT * FROM provider_events WHERE (status IN ('received','failed') AND next_attempt_at<=?) OR (status='processing' AND locked_at<?) ORDER BY received_at LIMIT 20",clock,clock-120000);
  for(const item of events){
   const lease=await exec(d,"UPDATE provider_events SET status='processing',locked_at=? WHERE id=? AND ((status IN ('received','failed') AND next_attempt_at<=?) OR (status='processing' AND locked_at<?))",clock,item.id,clock,clock-120000);
@@ -178,7 +178,7 @@ async function queueWorker(env){
  }
 }
 async function reconcilePending(env){
- const pending=await rows(env.DB,"SELECT * FROM orders WHERE payment_provider='asaas' AND checkout_id IS NOT NULL AND status='pending' ORDER BY updated_at LIMIT 12");
+ const pending=await rows(env.PAGAMENTO_ARTISYS_DB,"SELECT * FROM orders WHERE payment_provider='asaas' AND checkout_id IS NOT NULL AND status='pending' ORDER BY updated_at LIMIT 12");
  for(const row of pending){
   try{const proof=await verifyCheckoutPayment(env,fetch,row);if(proof)await markPaid(env,row,'scheduled_reconciliation',proof);}
   catch(e){console.error('payment reconciliation failed',{orderId:row.id,error:String(e.message).slice(0,100)});}
@@ -190,7 +190,7 @@ function cors(req,env){
  return origin&&allowed.includes(origin)?{'access-control-allow-origin':origin,'vary':'Origin','access-control-allow-headers':'authorization,content-type,idempotency-key','access-control-allow-methods':'GET,POST,OPTIONS'}:{};
 }
 async function process(request,env,ctx){
- const path=new URL(request.url).pathname,method=request.method,d=env.DB,headers=cors(request,env);
+ const path=new URL(request.url).pathname,method=request.method,d=env.PAGAMENTO_ARTISYS_DB,headers=cors(request,env);
  const allowedOrigin=!request.headers.get('origin')||Object.keys(headers).length>0;
  const send=(data,status=200)=>json(data,status,headers);
  if(method==='OPTIONS')return new Response(null,{status:allowedOrigin?204:403,headers});
@@ -201,7 +201,7 @@ async function process(request,env,ctx){
  if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
   const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
   const url=new URL(request.url);url.pathname=asset;url.search='';
-  return env.ASSETS.fetch(new Request(url.toString(),{method:'GET'}));
+  return env.PAGAMENTO_ARTISYS_ASSETS.fetch(new Request(url.toString(),{method:'GET'}));
  }
  if(!path.startsWith('/v1/'))return send({error:'not_found'},404);
  await initialize(env);
@@ -232,8 +232,8 @@ async function process(request,env,ctx){
   if(method==='GET'&&!ord[2])return send({order:publicOrder(row)});
   if(method==='GET'&&ord[2]==='download'){
    if(row.status!=='paid'||row.fulfillment_status!=='delivered'||row.delivery_mode!=='download'||!validArtifact(row.artifact_name))throw fail('download_not_ready',409);
-   if(!env.FILES)throw fail('storage_not_configured',503);
-   const object=await env.FILES.get('releases/'+row.artifact_name);
+   if(!env.PAGAMENTO_ARTISYS_ARQUIVOS)throw fail('storage_not_configured',503);
+   const object=await env.PAGAMENTO_ARTISYS_ARQUIVOS.get('releases/'+row.artifact_name);
    if(!object)throw fail('artifact_missing',404);
    return new Response(object.body,{headers:{...headers,'content-type':'application/octet-stream','content-disposition':'attachment; filename="'+row.artifact_name+'"','cache-control':'no-store','x-content-type-options':'nosniff'}});
   }

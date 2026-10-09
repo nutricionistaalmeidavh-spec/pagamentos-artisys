@@ -4,7 +4,7 @@
 
 Cloudflare Dashboard → Workers & Pages → Create application → Import a repository. Conecte a conta GitHub, selecione nutricionistaalmeidavh-spec/pagamentos-artisys e configure:
 
-- **Worker:** pagamentos-artisys, mesmo nome do wrangler.jsonc.
+- **Worker:** pagamento-artisys-central, mesmo nome do wrangler.jsonc.
 - **Production branch:** main.
 - **Root directory:** / ou vazio.
 - **Build command:** npm run check.
@@ -14,7 +14,9 @@ Workers Builds instalará as dependências e publicará o Worker quando houver n
 
 ## D1 e R2
 
-wrangler.jsonc declara os bindings DB e FILES **sem IDs** por usar provisionamento automático beta do Wrangler, que pode criar D1 e R2 no primeiro deploy via GitHub. **Confirme que os recursos foram provisionados no Dashboard**. Se a conta não tiver o beta, configure manualmente: crie banco D1 separado e bucket R2 próprio, copie o database_id e bucket_name reais para as respectivas entradas de wrangler.jsonc, faça commit e aguarde o deploy. Nunca reutilize D1 de outro produto ou invente IDs.
+wrangler.jsonc define os bindings **PAGAMENTO_ARTISYS_DB** (D1) e **PAGAMENTO_ARTISYS_ARQUIVOS** (R2), sem IDs de recursos, para provisionamento automático beta do Wrangler no primeiro deploy via GitHub. O D1 tem nome **pagamento-artisys-central-db**; o nome do bucket R2 será gerado pelo provisionamento automático com prefixo do Worker **pagamento-artisys-central**, para evitar reutilizar o bucket de outro aplicativo. **Confirme que os recursos foram provisionados no Dashboard**. Se a conta não tiver o beta, configure manualmente: crie D1 com nome **pagamento-artisys-central-db** e um bucket R2 exclusivo com prefixo **pagamento-artisys-central**, copie os valores reais `database_id` e `bucket_name` para as entradas respectivas em wrangler.jsonc, faça commit e aguarde o deploy. Nunca reutilize D1 de outro produto ou invente IDs.
+
+O binding dos arquivos está em **PAGAMENTO_ARTISYS_ARQUIVOS** e o dos assets do painel em **PAGAMENTO_ARTISYS_ASSETS**. O agendamento `*/5 * * * *` pertence exclusivamente a esse Worker, sem colisão com os crons dos demais sistemas.
 
 O schema é criado com IF NOT EXISTS na inicialização; a versão Node/SQLite local não compartilha dados com D1.
 
@@ -37,7 +39,7 @@ O Worker não define PAYMENTS_ENABLED no repositório. Portanto, cobranças Asaa
 
 ## Ativar e verificar
 
-1. Após o deploy, abra a URL workers.dev fornecida pelo Cloudflare.
+1. Após o deploy, abra a URL workers.dev fornecida pelo Cloudflare. O deploy publica código, painel, rotas e cron. Se os bindings D1/R2 forem provisionados automaticamente, os recursos também estarão conectados. Não publica ofertas, secrets ou domínio próprio de forma automática.
 2. GET /healthz deve retornar ok true, storage cloudflare-d1 e paymentsEnabled false.
 3. /admin deve abrir, exigindo ADMIN_TOKEN para carregar os dados.
 4. Conecte opcionalmente pagamentos.artisys.dev em Settings → Domains & Routes, se sua zona DNS estiver na Cloudflare.
