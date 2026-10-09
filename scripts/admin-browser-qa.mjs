@@ -105,6 +105,16 @@ try{
  assert.equal(imported.delivery_mode,'download');
  assert.equal(imported.artifact_name,'testes-e-controle-de-qualidade-v2.4.1.zip');
  assert.equal(check.first.published,0,'Nenhuma das 67 ofertas importadas deve ser publicada');
+ const healthAfter=await(await fetch(base+'/healthz')).json();
+ assert.equal(healthAfter.catalogDraftsLoaded,true,'Health confirma todos os 67 rascunhos no D1');
+ const cronTest=await fetch(base+'/cdn-cgi/local/scheduled?format=json');
+ assert.equal(cronTest.status,200,'Cron local deve responder e preservar os rascunhos');
+ const statusAfterCron=await page.evaluate(async token=>{
+  const r=await fetch('/v1/admin/catalog-drafts/status',{headers:{authorization:'Bearer '+token}});
+  return r.json();
+ },admin);
+ assert.deepEqual([statusAfterCron.present,statusAfterCron.missing],[67,0]);
+
 
  assert.deepEqual(issues,[],'Console/HTTP falhou');
  console.log('Playwright admin mobile + desktop: login, pedidos, rascunho D1, bloqueio de publicação, navegação OK.');
