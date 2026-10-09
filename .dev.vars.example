@@ -1,0 +1,6 @@
+# Somente desenvolvimento; secretos reais no Cloudflare Dashboard
+ADMIN_TOKEN=generate-long-random-admin-secret
+ASAAS_WEBHOOK_TOKEN=generate-long-random-webhook-secret
+PUBLIC_BASE_URL=https://example.com
+PUBLIC_ORIGINS=https://artisys.dev
+# PAYMENTS_ENABLED omitido por segurança

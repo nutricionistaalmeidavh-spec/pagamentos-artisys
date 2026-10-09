@@ -1,51 +1,39 @@
 # Pagamento ArtiSys
 
-Sistema financeiro independente para vender softwares e serviços ArtiSys diretamente no site, sem conectar pagamentos ao Obra na Mão, MercadoLivre ou Central de Licenças.
+Central financeira independente para venda dos sistemas ArtiSys. **Hospedagem canônica: Cloudflare Workers + D1 + R2**, com deploy automático pelo GitHub. A versão Node.js/SQLite permanece somente como opção self-hosted isolada.
 
-**Status:** implementação P0-P4 em homologação. O gateway pode ser homologado uma vez no motor central; cada novo aplicativo precisa apenas de testes do seu conector. Este motor independente ainda requer validação controlada do primeiro ambiente real antes de cobrar clientes.
+## Conectar ao Cloudflare
 
-## Entregas
+1. Fazer merge deste PR na branch **main** após CI aprovado.
+2. No Cloudflare: Workers & Pages → Create application → Import a repository → GitHub → nutricionistaalmeidavh-spec/pagamentos-artisys.
+3. Nome do Worker: **pagamentos-artisys** (igual ao wrangler.jsonc). Branch de produção: **main**. Diretório raiz: /.
+4. Build command: **npm run check**. Deploy command: **npx wrangler deploy**.
+5. Confirmar que o Worker dispõe dos bindings D1 **DB** e R2 **FILES**. A configuração utiliza provisionamento automático beta sem IDs; caso a conta não suporte, veja docs/CLOUDFLARE.md para adicionar os identificadores reais.
+6. Configurar em Worker → Settings → Variables & Secrets: ADMIN_TOKEN (segredo aleatório de no mínimo 32 caracteres), PUBLIC_BASE_URL (HTTPS definitivo) e PUBLIC_ORIGINS (domínio do site).
+7. Quando estiver pronto para conectar Asaas, configurar ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e ASAAS_API_BASE_URL exclusivos. Habilitar o checkout somente ao adicionar PAYMENTS_ENABLED=true ao runtime.
+8. Opcionalmente vincular pagamentos.artisys.dev pelo painel Domains & Routes; até lá usar a URL workers.dev gerada na implantação.
 
-| Fase | Funcionalidades implementadas |
-| --- | --- |
-| P0 | Node.js + SQLite, catálogo e preços canônicos, cupons, pedidos, tokens, painel |
-| P1 | Adaptador Checkout Asaas opcional, Pix manual alternativo, compra avulsa e estrutura recorrente |
-| P2 | Webhook autenticado, persistência antes do HTTP 200, deduplicação, fila de tentativas, replay e reconciliação |
-| P3 | Entrega manual, download local protegido e conectores de produto HMAC por origem permitida |
-| P4 | Dashboard, ofertas, pedidos, cupons, eventos, entregas, tela de checkout, consulta protegida do pedido e contrato OpenAPI |
+O Worker cria D1 apenas com CREATE TABLE/INDEX IF NOT EXISTS; checkout Asaas permanece **desativado** enquanto PAYMENTS_ENABLED não for true. Sem D1 responde 503 em vez de simular disponibilidade.
 
-## Execução local (núcleo R$0)
+## Rotas
 
-Requer Node.js 22.16 ou superior. A API usa somente bibliotecas nativas do Node.js e SQLite embutido; Node 22 pode imprimir um aviso experimental do SQLite.
+- /admin — painel administrativo.
+- /comprar?oferta=ID — checkout público.
+- /pedido?id=ID — status protegido do pedido.
+- /v1/catalog — ofertas publicadas.
+- /v1/orders — pedidos e checkout.
+- /v1/webhooks/asaas — receptor autenticado de webhooks.
+- /healthz — integridade e binding D1.
 
-1. Copie .env.example para .env.
-2. Gere um ADMIN_TOKEN aleatório de ao menos 32 caracteres (Node crypto.randomBytes).
-3. Configure o ADMIN_TOKEN apenas no arquivo de ambiente privado.
-4. Execute: node --env-file=.env src/main.mjs
-5. Abra http://127.0.0.1:3080/admin.
-6. Cadastre oferta e habilite sua publicação.
+Arquivos digitais em R2: releases/NOME_DO_ARQUIVO, servidos com token do comprador. Conectores HTTPS HMAC para sistemas desktop e SaaS. Cron de reconciliação a cada 5 minutos.
 
-Docker: docker compose up --build -d. O container fica exposto somente na interface local 127.0.0.1:3080. Publique atrás de proxy TLS open source (ex.: Caddy) para receber webhooks externos.
+## Testes e segurança
 
-## Testes
+- **npm run check**: testes da API e do Worker.
+- **npm run test:worker**: smoke Worker+D1+assets local sem chave Asaas real.
+- GitHub Actions roda apenas por acionamento manual ou abertura/reabertura/ready de PR, não a cada commit.
+- Cloudflare Workers Builds fará deploy de cada commit na main após a vinculação GitHub.
 
-- npm test — suite integrada com simulação local da API Asaas.
-- npm run check — valida a sintaxe do backend e roda a suite.
-- CI GitHub Actions — somente em Pull Request para main ou acionamento manual; não dispara a cada commit.
+O motor Asaas pode ser homologado uma vez; novos produtos necessitam somente testar preço e conector. O primeiro deploy em conta nova requer verificação controlada de segredos, webhook, DNS, backups, rate limiting e primeiros pagamentos. Nenhum segredo ou instalação de produto existente é alterado.
 
-## Documentos
-
-- docs/INTEGRACAO.md — API, modelo de segurança, operação e integração dos sistemas.
-- docs/openapi.yaml — contrato OpenAPI 3.1.
-- API oficial Asaas: https://docs.asaas.com/reference/criar-novo-checkout
-- Webhook oficial Asaas: https://docs.asaas.com/docs/receba-eventos-do-asaas-no-seu-endpoint-de-webhook
-
-## Notas de implantação
-
-O Asaas não é requisito para rodar o núcleo e tem tarifas próprias quando habilitado. Nenhum segredo real é commitado.
-
-O painel de pedidos usa SQLite como fonte canônica. Cada produto mantém sua própria autoridade de licença e somente recebe um evento por conector HMAC. Sem conector, o pedido pago permanece aguardando configuração/entrega e não finge que uma licença foi ativada.
-
-**Limites desta entrega:** conectar produtos reais, validar uma vez o ambiente do motor financeiro, configurar monitoramento, backups, limitação de tráfego e TLS de produção exigem preparação do operador. Estorno financeiro via API do Asaas, troca de plano, emissão fiscal e cancelamento self-service de assinaturas não são automatizados nesta versão.
-
-A venda só deve ser habilitada no site após validação controlada do motor neste ambiente. Não há obrigação de nova compra sandbox sempre que outro produto aderir ao contrato já testado.
+[Configuração Cloudflare](docs/CLOUDFLARE.md) · [Contrato de API](docs/openapi.yaml) · [Integrações de produtos](docs/INTEGRACAO.md)

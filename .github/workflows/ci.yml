@@ -8,21 +8,21 @@ permissions:
   contents: read
 jobs:
   test:
-    name: API + contratos + Docker
+    name: Node + Worker D1 + Docker
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Sintaxe e testes
+      - name: Instalar Wrangler
+        run: npm install --no-audit --no-fund
+      - name: Testes Node e Worker
         run: npm run check
-      - name: Imagem self-hosted
+      - name: Teste local Worker D1
+        run: npm run test:worker
+      - name: Build Docker opcional
         run: docker build -t pagamento-artisys:test .
-      - name: Smoke container
-        run: |
-          docker run -d --name pagamento-smoke -e HOST=0.0.0.0 -e ADMIN_TOKEN=test-only-not-a-real-secret-for-ci docker.io/library/pagamento-artisys:test
-          sleep 2
-          docker exec pagamento-smoke node -e "fetch('http://127.0.0.1:3080/healthz').then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(x=>console.log(x)).catch(()=>process.exit(1))"
-          docker rm -f pagamento-smoke
+      - name: Empacotar Worker sem publicar
+        run: npx wrangler deploy --dry-run --outdir .wrangler/build

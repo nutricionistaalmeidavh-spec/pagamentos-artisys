@@ -1,14 +1,21 @@
 {
   "name": "pagamentos-artisys",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=22.16.0"},
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "scripts": {
     "start": "node src/main.mjs",
-    "dev": "node --watch src/main.mjs",
+    "dev": "wrangler dev",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/app.mjs && node --check src/asaas.mjs && node --check src/main.mjs && node --check public/admin.js && node --check public/checkout.js && node --test test/*.test.mjs"
+    "check": "node --check src/app.mjs && node --check src/asaas.mjs && node --check src/main.mjs && node --check src/cloudflare-worker.mjs && node --check public/admin.js && node --check public/checkout.js && node --test test/*.test.mjs",
+    "deploy": "wrangler deploy",
+    "test:worker": "node scripts/workers-smoke.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.68.0"
   },
   "license": "MIT"
 }
