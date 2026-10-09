@@ -17,7 +17,7 @@ test('painel usa assets do worker',async()=>{
 });
 test('wrangler inclui worker, D1, R2 e cron',()=>{
  const cfg=JSON.parse(readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8'));
- assert.equal(cfg.name,'pagamento-artisys-central');
+ assert.equal(cfg.name,'pagamentos-artisys-central');
  assert.equal(cfg.main,'src/cloudflare-worker.mjs');
  assert.ok(cfg.d1_databases.some(x=>x.binding==='PAGAMENTO_ARTISYS_DB' && x.database_name==='pagamento-artisys-central-db'));
  assert.ok(cfg.r2_buckets.some(x=>x.binding==='PAGAMENTO_ARTISYS_ARQUIVOS' && !x.bucket_name));
