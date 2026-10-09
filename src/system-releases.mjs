@@ -1,6 +1,7 @@
 // Fontes: Google Drive (demais sistemas) + GitHub Actions aprovado (Obra na Mão), 2026-10-09.
 // Somente 4 sistemas, NENHUM dos 63 kits. Obra 2.1.0 vem do artifact oficial de build da main.
-// O manifest registra origem, NÃO transfere arquivos nem aprova publicação.
+// Fontes, tamanhos e hashes SHA-256 de binários reais verificados em 2026-10-09. GitHub Actions sincroniza com R2 após configuração autorizada.
+// Manifesto sozinho não publica ofertas, não concede acesso ao comprador e não faz upload de bytes no deploy.
 export const SYSTEM_RELEASES=Object.freeze([
   {
     "id": "obra-windows",
@@ -24,6 +25,7 @@ export const SYSTEM_RELEASES=Object.freeze([
     "fileName": "Instalador-ArtisysPDV-Windows10-11.exe",
     "size": 98109306,
     "driveId": "1hAu1EhTGtSf3npdxsjl0X_RpdeSGHlSV",
+    "sha256": "00d6bc108a415637c171a8ff5fa631f9b0407cdc0baba80910908ff2403d6e8d",
     "outdated": false,
     "key": "releases/pdv-artisys-restaurantes-pdv-artisys-windows-Instalador-ArtisysPDV-Windows10-11.exe"
   },
@@ -35,6 +37,7 @@ export const SYSTEM_RELEASES=Object.freeze([
     "fileName": "Instalador-ArtisysPDV-macOS-Intel.dmg",
     "size": 122669575,
     "driveId": "1CqxfNSHU8PTIL3XzYzwa5LcOZn5NwTdc",
+    "sha256": "3f78cb766c2de963e8a9b86a42052c5510fade5f25ba4d93bd1123ad3610a3ab",
     "outdated": false,
     "key": "releases/pdv-artisys-restaurantes-pdv-artisys-mac-intel-Instalador-ArtisysPDV-macOS-Intel.dmg"
   },
@@ -46,6 +49,7 @@ export const SYSTEM_RELEASES=Object.freeze([
     "fileName": "Instalador-ArtisysPDV-macOS-AppleSilicon.dmg",
     "size": 117168141,
     "driveId": "1Lj2OY464T5vU5Xf5EOhUSkP0wOF3kjBz",
+    "sha256": "1d981da6add52def7e80a93ad8deb332f92e0c55ac919e6c5ba9fdc0d12705fd",
     "outdated": false,
     "key": "releases/pdv-artisys-restaurantes-pdv-artisys-mac-silicon-Instalador-ArtisysPDV-macOS-AppleSilicon.dmg"
   },
@@ -57,6 +61,7 @@ export const SYSTEM_RELEASES=Object.freeze([
     "fileName": "INSTALADOR-WINDOWS10.exe",
     "size": 94403609,
     "driveId": "1EXfLkUH7Jun6oMBkfljTQnUqtDAYOMAT",
+    "sha256": "2ba3c380376bad5443613300f886ef093c2973798d5149e93ff9a99d4fd34a1b",
     "outdated": false,
     "key": "releases/pdv-nexus-pdv-nexus-win10-INSTALADOR-WINDOWS10.exe"
   },
@@ -68,6 +73,7 @@ export const SYSTEM_RELEASES=Object.freeze([
     "fileName": "INSTALADOR-WINDOWS8.exe",
     "size": 65376681,
     "driveId": "1MI5V-OfCM4u9EL4m5ei3k_omRJ4xEKNw",
+    "sha256": "f357c6ee0d6cedac49bebd1b9d67d1d89e007f2943252383f0f6dc1d7a80c866",
     "outdated": false,
     "key": "releases/pdv-nexus-pdv-nexus-win8-INSTALADOR-WINDOWS8.exe"
   },
@@ -79,6 +85,7 @@ export const SYSTEM_RELEASES=Object.freeze([
     "fileName": "INSTALADOR-WINDOWS7.exe",
     "size": 69007120,
     "driveId": "1fxyWAOGPvpJ9zNaSBIxTVHNpbYlMSOkm",
+    "sha256": "2bf1ffb70037f8f5c6b752f8536d081d5d557c819749ab52154cc492462e1bb7",
     "outdated": false,
     "key": "releases/pdv-nexus-pdv-nexus-win7-INSTALADOR-WINDOWS7.exe"
   },
@@ -90,6 +97,7 @@ export const SYSTEM_RELEASES=Object.freeze([
     "fileName": "ArtiSys-Financeiro-Setup-0.1.0.exe",
     "size": 118366655,
     "driveId": "12rwqtuaiM4vHRcByNhHNU5lvEE2mLDer",
+    "sha256": "c33f578d3fba27742cab08cb948cfdc355a84d1148cd1e8b9c89cb357a0e8c8f",
     "outdated": false,
     "key": "releases/artisys-sistema-financeiro-financeiro-windows-ArtiSys-Financeiro-Setup-0.1.0.exe"
   }
