@@ -1,5 +1,6 @@
 import {createCheckout,verifyCheckoutPayment,verifyPaymentEvent} from './asaas.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
+import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 
 const schema=[
   "CREATE TABLE IF NOT EXISTS offers(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',price_cents INTEGER NOT NULL CHECK(price_cents>0),currency TEXT NOT NULL DEFAULT 'BRL',sale_type TEXT NOT NULL DEFAULT 'one_time',delivery_mode TEXT NOT NULL DEFAULT 'manual',artifact_name TEXT,active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
@@ -293,6 +294,24 @@ async function process(request,env,ctx){
    return send({summary:{...summary,failedEvents:broken.count},integrations:Object.entries(connections).map(([productId,x])=>({productId,configured:!!(x?.url&&x?.secret)}))});
   }
   if(method==='GET'&&path==='/v1/admin/offers')return send({offers:await rows(d,'SELECT * FROM offers ORDER BY updated_at DESC LIMIT 200')});
+
+  if(method==='GET'&&path==='/v1/admin/catalog-drafts/status'){
+   const ids=CATALOG_DRAFTS.map(x=>x.id),existing=await rows(d,"SELECT id,active,price_cents,product_id FROM offers WHERE id IN ("+ids.map(()=>'?').join(',')+")",...ids);
+   const dbById=new Map(existing.map(x=>[x.id,x]));
+   return send({expected:CATALOG_DRAFTS.length,present:existing.length,missing:ids.filter(id=>!dbById.has(id)).length,published:existing.filter(x=>x.active===1).length,changed:CATALOG_DRAFTS.filter(x=>{const old=dbById.get(x.id);return old&&(old.price_cents!==x.priceCents||old.product_id!==x.productId);}).length});
+  }
+  if(method==='POST'&&path==='/v1/admin/catalog-drafts/import'){
+   // Importação aditiva: preserva ofertas já existentes, inclusive preços e status.
+   const count=CATALOG_DRAFTS.length;
+   if(count!==67||CATALOG_DRAFTS.some(x=>x.active!==false))throw fail('catalog_draft_invalid',503);
+   const stamp=now();
+   const statements=CATALOG_DRAFTS.map(v=>d.prepare("INSERT OR IGNORE INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?)").bind(v.id,v.productId,v.name,v.description,v.priceCents,v.saleType,v.deliveryMode,v.artifactName||null,0,stamp,stamp));
+   const result=await d.batch(statements);
+   const created=result.reduce((sum,item)=>sum+Number(item?.meta?.changes||0),0);
+   await audit(d,'catalog_draft_import','devkittools-2026-10-09',{expected:count,created,alreadyExisting:count-created});
+   return send({expected:count,created,alreadyExisting:count-created,active:false});
+  }
+
   if(method==='POST'&&path==='/v1/admin/offers'){
    const v=isObj(await read(request)),id=String(v.id||''),pid=String(v.productId||''),price=Number(v.priceCents),sale=String(v.saleType||'one_time'),delivery=String(v.deliveryMode||'manual'),artifact=v.artifactName||null;
    if(!validId(id)||!validId(pid)||!String(v.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw fail('invalid_offer');
