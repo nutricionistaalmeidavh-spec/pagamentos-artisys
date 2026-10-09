@@ -1,58 +1,43 @@
-# Sincronização automática dos 4 sistemas para R2 — GitHub Actions
+# Sincronização automática — somente GitHub → Cloudflare R2 privado
 
-## Fluxo
+A sincronização após merge na main é feita por **ArtiSys · Sincronizar instaladores no R2**, usando um manifesto de oito instaladores de quatro sistemas. Os 63 Dev Kits são independentes e **não são alterados**.
 
-`merge em main` → GitHub Actions **ArtiSys · Sincronizar instaladores no R2** → valida manifesto versionado em `src/system-releases.mjs` → baixa 8 instaladores de fonte autorizada (Google Drive ou artefato GitHub Actions) → valida tamanho e SHA-256 → upload multipart diretamente ao R2 privado → valida **HEAD (tamanho + SHA-256 em metadados)** → painel exibe **R2 · SHA conferido**.
+## Fonte de cada sistema
 
-**Não colocar executáveis no GitHub.** São 8 arquivos somando aproximadamente 810 MB; alguns passam do limite de 100 MB por objeto do GitHub. O manifesto é o contrato de arquivos, não a carga binária. O repositório também não ganha acesso automático aos segredos do Cloudflare só porque o Worker faz deploy pelo GitHub.
+- Obra na Mão: artefato GitHub Actions do instalador Windows **2.1.0**, do repositório `OBRANAMAOCOMERCIAL`.
+- PDV ArtiSys: GitHub Release **2.0.7** para Windows; artefatos GitHub Actions **2.0.1** para macOS Intel e Apple Silicon, do repositório `PDV-ARTISYS`.
+- PDV Nexus (não Classic): GitHub Release **2.0.1**, com instaladores Windows 10/11, 8 (32 bits) e 7, do repositório `PDVNexus`.
+- ArtiSys Sistema Financeiro: artefato GitHub Actions **0.1.0**, reconstruído no repositório `sistemafinanceiro`.
 
-## Configuração única necessária no GitHub
+Versões distintas por plataforma são intencionais e devem ser exibidas como tais. Os hashes e tamanhos constam em `src/system-releases.mjs`. Release público não é sinônimo de autorização de pagamento: a entrega continuará privada até o checkout e o download protegido estarem homologados.
 
-Repositório: `nutricionistaalmeidavh-spec/pagamentos-artisys` → **Settings → Secrets and variables → Actions**.
+## Configuração restante (não é necessária nenhuma credencial do Google Drive)
 
-Criar **3 segredos** (NÃO enviar conteúdo pelo chat, commit, issue ou PR):
+O vínculo de deploy GitHub → Cloudflare **não transfere tokens de escrita R2 para GitHub Actions**. No repositório `pagamentos-artisys` → Settings → Secrets and variables → Actions:
 
-| Secret | Conteúdo | Escopo de acesso |
-|---|---|---|
-| `ARTISYS_R2_CONFIG_JSON` | JSON contendo `account_id`, `bucket`, `access_key_id`, `secret_access_key` | Credencial S3-compatible do Cloudflare R2 limitada ao bucket privado `PAGAMENTO_ARTISYS_ARQUIVOS` |
-| `ARTISYS_GDRIVE_OAUTH_JSON` | JSON contendo `client_id`, `client_secret`, `refresh_token` | OAuth `drive.readonly` com acesso aos sete instaladores no Google Drive |
-| `ARTISYS_SOURCE_GITHUB_TOKEN` | Fine-grained PAT no repositório `OBRANAMAOCOMERCIAL` com **Actions: Read** | Só para baixar o artefato aprovado do Obra na Mão 2.1.0 |
+1. Secret **`ARTISYS_R2_CONFIG_JSON`** — JSON com o `account_id`, o **nome real do bucket já existente**, `access_key_id` e `secret_access_key` S3 R2. Conceder apenas acesso ao bucket privado de releases, sem usar tokens de Asaas ou OAuth do painel.
+2. Secret **`ARTISYS_SOURCE_GITHUB_TOKEN`** — fine-grained GitHub PAT com **Actions: Read** nos repositórios `OBRANAMAOCOMERCIAL`, `PDV-ARTISYS` e `sistemafinanceiro`. As releases públicas não precisam desse PAT.
+3. Repository variable **`ARTISYS_RELEASE_SYNC_ENABLED=true`** — apenas depois de cadastrar os dois secrets, para permitir o upload em `main`. Não controla `PAYMENTS_ENABLED`.
 
-Exemplo **esquemático**, sem valores reais, do JSON R2:
+**Não configurar `ARTISYS_GDRIVE_OAUTH_JSON`**. Nenhuma leitura do Drive faz parte do pipeline.
 
-```json
-{"account_id":"CONTA_CLOUDFLARE","bucket":"BUCKET_EXISTENTE","access_key_id":"CHAVE_R2","secret_access_key":"SEGREDO_R2"}
-```
+Quando os acessos forem autorizados: Actions → **ArtiSys · Sincronizar instaladores no R2** → **Run workflow**. Próximas alterações de manifesto na main executam o workflow automaticamente. Antes disso a etapa de validação passa e o upload permanece `skipped`.
 
-Exemplo **esquemático** do JSON Google Drive:
+## Como funciona
 
-```json
-{"client_id":"CLIENT_ID_OAUTH","client_secret":"CLIENT_SECRET_OAUTH","refresh_token":"REFRESH_TOKEN_READONLY"}
-```
+1. Exporta e valida o manifesto de oito binários, com repositório de origem permitido por ID do produto.
+2. Faz HEAD no R2 privado e pula objeto já íntegro (tamanho e metadata SHA-256).
+3. Para o que faltar, baixa da **GitHub Release** correspondente ou do **artefato GitHub Actions** correspondente.
+4. No caso de artefato ZIP de Actions, extrai somente o `.exe`/`.dmg` esperado; nunca confunde o ZIP com o arquivo distribuído.
+5. Calcula SHA-256 nos bytes do instalador extraído e compara com o valor do manifesto; falha fechado em qualquer divergência.
+6. Faz upload multipart via cliente S3-compatible do R2 e depois confirma HEAD e metadata SHA-256.
+7. O painel mostra **R2 · SHA conferido** somente para arquivos verificados.
 
-Usar nome **real** do bucket Cloudflare, que não está fixado em `wrangler.jsonc` (binding R2 gerado no provisionamento original). Nenhum bucket, token, Worker, OAuth do checkout ou aplicação será recriado.
+Arquivos maiores que 100 MB não são commitados no repositório. O manifesto está versionado, os binários permanecem nos releases/artifacts de origem e no bucket privado. Artefatos Actions expiram; execute a importação antes da retenção acabar ou regenere a build validada e atualize o manifesto.
 
-**Após cadastrar os três secrets**, em **Variables → Repository variables**, criar `ARTISYS_RELEASE_SYNC_ENABLED=true`. Esta flag autoriza **somente upload de binários**, não ativa cobranças nem publica ofertas.
+## Limites
 
-Se os secrets/flag forem adicionados **depois** do merge, entrar em **Actions → ArtiSys · Sincronizar instaladores no R2 → Run workflow** uma única vez. Próximas alterações do manifesto em `main` sincronizam automaticamente.
-
-## Garantias e limites
-
-- A automação só roda o upload na `main` quando `ARTISYS_RELEASE_SYNC_ENABLED=true`. O job de validação roda sem credenciais.
-- O upload consulta `HEAD` do R2. Se já existir o arquivo com **mesmo tamanho e hash nos metadados**, pula. Se houver objeto diferente na mesma chave, aborta — **não sobrescreve**.
-- As oito entradas passam por SHA-256 dos bytes realmente baixados. Só são aceitos 7 IDs do Google Drive e o artefato do GitHub Actions do Obra 2.1.0, com origem/endereço autorizados.
-- A chave R2 é fixa e privada em `releases/...`. O job não faz `wrangler deploy`, não atualiza D1, nem altera `PAYMENTS_ENABLED`, `active` ou `delivery_mode`.
-- Sem ativar o recebimento automático pelo comprador. **Upload para R2 não significa entrega concluída:** só posteriormente implementar e homologar links protegidos por pedido pago, por plataforma, com validação de Asaas.
-- Executáveis só podem ser redistribuídos depois da verificação de licença do software e eventuais componentes de terceiros. O pipeline valida **integridade**, não licenciamento/assinatura do sistema operacional.
-- O artefato do GitHub Actions pode expirar (retention 90 dias). Após sincronização, reexecução usa objetos já verificados no R2 e dispensa novo download; ao mudar versão, apontar o manifesto a um artefato ainda disponível.
-- Arquivo carregado manualmente na UI sem metadado SHA-256 é marcado como *R2 · SHA pendente*. A rotina automática interromperá ao encontrar chave existente sem SHA válido em vez de ocultar possível divergência.
-
-## Arquivos versionados
-
-- `src/system-releases.mjs`: manifest fonte de verdade com versões, keys e SHA-256
-- `scripts/export-release-manifest.mjs`: exportação validada para formato neutro
-- `scripts/sync_system_releases.py`: download autorizado, verificação e multipart R2
-- `.github/workflows/sync-system-releases-r2.yml`: agendamento automático após merge
-- `test/test_release_sync.py`: testes sem chamadas externas
-
-O sistema atual possui as ofertas em rascunho; os 63 Dev Kits não fazem parte deste workflow.
+- O pipeline não cria nova conta, token, bucket, Worker, domínio, OAuth ou ligação Cloudflare.
+- Não habilita vendas, não altera `PAYMENTS_ENABLED`, `active`, `delivery_mode` ou dados D1.
+- Upload não é entrega ao comprador: exige implementação e homologação do download protegido com token de pedido pago.
+- A automação não substitui instaladores em conflito silenciosamente, nem aceita releases de repositórios divergentes.
