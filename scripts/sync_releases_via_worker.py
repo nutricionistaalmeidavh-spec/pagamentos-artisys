@@ -108,14 +108,19 @@ class OidcClient:
         deadline = time.monotonic() + timeout_seconds
         while True:
             try:
-                return self.call(STATUS_PATH, attempts=2)
-            except SyncError as exc:
-                # The Worker's auto-deploy may finish after the GitHub push fires
-                # this workflow. Wait for the signed-OIDC release endpoint.
+                with urllib.request.urlopen(self.root + "/healthz", timeout=15) as response:
+                    health = json.load(response)
+                if health.get("releaseSyncAuth") == "github-oidc-v1":
+                    # Now a 401 indicates a real auth error, NOT deployment race.
+                    return self.call(STATUS_PATH, attempts=2)
                 if time.monotonic() + 15 >= deadline:
-                    raise SyncError("Novo Worker com autenticação OIDC não ficou disponível") from exc
-                print("Aguardando resposta OIDC do Worker: " + str(exc), flush=True)
-                time.sleep(15)
+                    raise SyncError("Deploy do Worker não publicou o endpoint OIDC")
+                print("Aguardando deploy do Worker (healthz ainda sem github-oidc-v1)...", flush=True)
+            except urllib.error.URLError as exc:
+                if time.monotonic() + 15 >= deadline:
+                    raise SyncError("Worker indisponível no prazo de espera") from exc
+                print("Aguardando Worker ficar disponível...",flush=True)
+            time.sleep(15)
 
 
 def checked_status(payload, entries):
