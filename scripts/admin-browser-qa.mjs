@@ -32,7 +32,10 @@ try{
  await page.screenshot({path:'qa-shots/01-inicio-iphone.png',fullPage:true});
  await page.locator('[data-screen=pedidos]').click();
  await page.getByRole('heading',{name:'Pedidos'}).waitFor();
- assert.match(await page.locator('#orders-list').innerText(),/Ainda não há pedidos/);
+ await page.locator('#orders-count').waitFor();
+ await page.locator('#order-search').fill('busca-inexistente-qa-123456789');
+ await page.getByText('Nenhum pedido encontrado').waitFor();
+ await page.locator('#order-search').fill('');
  await page.screenshot({path:'qa-shots/02-pedidos-iphone.png',fullPage:true});
  await page.locator('[data-screen=ofertas]').click();
  await page.getByRole('heading',{name:'Ofertas'}).waitFor();
