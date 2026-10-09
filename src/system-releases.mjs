@@ -110,8 +110,8 @@ export const SYSTEM_RELEASES=Object.freeze([
     "size": 116634624,
     "source": "github-actions",
     "sourceRepo": "nutricionistaalmeidavh-spec/sistemafinanceiro",
-    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/sistemafinanceiro/actions/runs/38001969662/artifacts/11649067939",
-    "sha256": "dcc7bc6144245a87d34692de4ff4b6cbd273f48a9148233de9b42e68e3585cc5",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/sistemafinanceiro/actions/runs/38002353963/artifacts/11649764002",
+    "sha256": "3a198aaf0918f8c0e1348ed3f75eeeb3ea940eeaf85187f3bac3081fd192649b",
     "outdated": false,
     "key": "releases/artisys-sistema-financeiro-financeiro-windows-ArtiSys-Financeiro-Setup-0.1.0.exe"
   }
