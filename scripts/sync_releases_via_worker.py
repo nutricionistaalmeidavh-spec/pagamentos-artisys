@@ -113,12 +113,12 @@ class OidcClient:
                     headers={"User-Agent": "ArtiSys-Github-OIDC-R2/1.0", "Accept":"application/json"})
                 with urllib.request.urlopen(health_req, timeout=15) as response:
                     health = json.load(response)
-                if health.get("releaseSyncAuth") == "github-oidc-v1":
+                if health.get("releaseSyncAuth") == "github-oidc-v2":
                     # Now a 401 indicates a real auth error, NOT deployment race.
                     return self.call(STATUS_PATH, attempts=2)
                 if time.monotonic() + 15 >= deadline:
                     raise SyncError("Deploy do Worker não publicou o endpoint OIDC")
-                print("Aguardando deploy do Worker (healthz ainda sem github-oidc-v1)...", flush=True)
+                print("Aguardando deploy do Worker (healthz ainda sem github-oidc-v2)...", flush=True)
             except urllib.error.HTTPError as exc:
                 # Authentication/WAF rejections are not propagation delays.
                 if exc.code in (401, 403, 404):
