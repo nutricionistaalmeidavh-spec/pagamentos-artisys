@@ -103,10 +103,46 @@ function renderMore(){
  const h=health||{};
  el('integrations-content').innerHTML='<div class="notice"><span>'+icon('shield')+'</span><div><strong>Asaas: '+(h.gatewayConfigured?'Chave cadastrada':'Chave ausente')+'</strong><p>'+ (h.gatewayConfigured?'A presença da chave não confirma autenticação. Ainda é necessário testar a integração financeira.':'Cadastre ASAAS_API_KEY como segredo no Worker.')+'</p></div></div>'+
  '<div class="surface ops-card"><div class="card-top"><strong>Condições para venda</strong>'+label(paymentsOnline()?['Checkout habilitado','ok']:['Checkout desativado','warn'])+'</div><div class="data-list"><div><dt>Worker e D1</dt><dd>Conectados</dd></div><div><dt>Credencial do Asaas</dt><dd>'+esc(h.gatewayConfigured?'Cadastrada':'Não configurada')+'</dd></div><div><dt>Autenticação no Asaas</dt><dd>Não verificada pelo painel</dd></div><div><dt>Recebimento do webhook</dt><dd>Verifique os eventos abaixo</dd></div></div><p class="muted">Para alterar secrets ou liberar pagamentos, use as configurações do Cloudflare. O painel não exibe credenciais privadas.</p></div>'+
+ '<div class="surface ops-card"><div class="card-top"><strong>Diagnóstico da integração Asaas</strong><button type="button" id="diagnose-asaas" class="secondary">Verificar agora</button></div><p class="muted">Consulta apenas dados de leitura no Asaas. Nenhuma cobrança será criada e nenhuma chave aparecerá nesta página.</p><div id="asaas-diagnostic" aria-live="polite">'+empty('Ainda não verificado','Toque em Verificar agora para autenticar a API e conferir o webhook ativo.')+'</div></div>'+
  '<div class="surface ops-card"><strong>Conectores de produtos</strong>'+ (integrations.length?integrations.map(x=>'<div class="card-bottom"><span class="small">'+esc(x.productId)+'</span>'+label(x.configured?['Configurado','ok']:['Incompleto','warn'])+'</div>').join(''):'<p class="muted">Nenhum conector cadastrado. Entrega manual continua disponível.</p>')+'</div>';
  el('events-content').innerHTML=events.length?events.map(x=>'<div class="surface ops-card"><div class="card-top"><strong>'+esc(x.event_type)+'</strong>'+label(x.status==='processed'?['Processado','ok']:x.status==='failed'?['Falhou','error']:['Pendente','warn'])+'</div><div class="small">'+esc(x.id)+'</div>'+ (x.last_error?'<p class="muted">Motivo técnico: '+esc(x.last_error)+'</p>':'')+'<div class="card-bottom"><span class="small">'+esc(date(x.received_at))+'</span>'+(x.status==='failed'?'<button class="secondary" type="button" data-replay="events" data-id="'+esc(x.id)+'">Reprocessar</button>':'')+'</div></div>').join(''):empty('Nenhum evento registrado','Quando o Asaas enviar um evento autenticado, ele aparecerá aqui. Não faça compras reais apenas para preencher esta lista.');
  el('fulfillments-content').innerHTML=fulfillments.length?fulfillments.map(x=>'<div class="surface ops-card"><div class="card-top"><strong>Pedido '+esc(x.order_id.slice(0,8))+'</strong>'+label(x.status==='delivered'?['Concluída','ok']:x.status==='failed'?['Falhou','error']:['Pendente','warn'])+'</div><div class="small">Ação: '+esc(x.action)+'</div>'+(x.last_error?'<p class="muted">'+esc(x.last_error)+'</p>':'')+'<div class="card-bottom"><span class="small">'+esc(date(x.updated_at))+'</span>'+(x.status==='failed'?'<button class="secondary" type="button" data-replay="fulfillments" data-id="'+esc(x.id)+'">Reprocessar</button>':'')+'</div></div>').join(''):empty('Fila de entregas vazia','Os pedidos pagos que precisam de entrega aparecerão aqui.');
 }
+
+const diagnosticCodes={
+ authenticated:'Autenticada',unauthorized:'Chave recusada (401)',forbidden:'Sem permissão para esta consulta (403)',
+ provider_unavailable:'Asaas indisponível ou resposta inválida',provider_http_error:'Resposta de erro do Asaas',
+ rate_limited:'Limite de consultas atingido',key_missing:'Chave ausente',invalid_api_host:'Host de API inválido',
+ invalid_public_base_url:'PUBLIC_BASE_URL inválida',not_checked:'Não verificado',not_found:'Webhook não encontrado',
+ duplicate:'Mais de um webhook com a mesma URL',found:'Webhook localizado'
+};
+const diagnosticState=(ok,yes,no)=>label(ok?[yes,'ok']:[no,'warn']);
+function renderAsaasDiagnostic(d){
+ const hook=d.webhook||{},events=(hook.missingEvents||[]);
+ const rows=[
+  ['Ambiente',diagnosticState(d.environment==='production','Produção','Não é produção')],
+  ['Autenticação na API',diagnosticState(d.apiAuthenticated,'Autenticada',diagnosticCodes[d.apiStatus]||'Não confirmada')],
+  ['Webhook com URL correta',diagnosticState(hook.urlMatches,'Confirmada',diagnosticCodes[hook.status]||'Não confirmada')],
+  ['Webhook ativo',diagnosticState(hook.enabled===true,'Ativo','Inativo ou não verificado')],
+  ['Fila de envio',diagnosticState(hook.interrupted===false&&hook.found,'Sem interrupção','Interrompida ou não verificada')],
+  ['Eventos do checkout',diagnosticState(hook.eventsConfigured,'Configurados','Faltando: '+events.join(', ')||'Não verificados')],
+  ['Token local de webhook',diagnosticState(d.webhookTokenConfigured,'Cadastrado (sem comparação externa)','Ausente ou inválido')]
+ ];
+ const detail=rows.map(([k,v])=>'<div><dt>'+esc(k)+'</dt><dd>'+v+'</dd></div>').join('');
+ const overall=d.configurationReady
+  ?'<p class="notice" style="margin-top:12px"><strong>Configuração consistente nas consultas de leitura.</strong> Ainda é necessário provar a chegada de um evento autenticado, a conciliação de pagamento e a entrega antes de liberar vendas.</p>'
+  :'<div class="warning-note">Há pendências de configuração ou de permissão. Confira as linhas acima antes de liberar cobranças.</div>';
+ el('asaas-diagnostic').innerHTML='<dl class="data-list">'+detail+'</dl>'+overall+'<p class="muted">Verificação de token recebido no webhook: não demonstrada. Pagamento real e entrega: não homologados. Não alteramos PAYMENTS_ENABLED.</p>';
+}
+async function checkAsaas(button){
+ if(button.disabled)return;
+ button.disabled=true;const text=button.textContent;button.textContent='Verificando…';
+ const area=el('asaas-diagnostic');area.innerHTML='<div class="loading">Consultando endpoints de leitura no Asaas…</div>';
+ try{renderAsaasDiagnostic(await api('asaas/diagnostic'));}
+ catch(e){area.innerHTML=empty('Diagnóstico indisponível',translateError(e));showError(e,'Asaas');}
+ finally{button.disabled=false;button.textContent=text;}
+}
+
 function openModal(title,body){
  if(el('modal-backdrop').hidden)lastFocus=document.activeElement;
  modalMode=title;el('modal-title').textContent=title;el('modal-content').innerHTML=body;
@@ -240,6 +276,7 @@ document.addEventListener('click',e=>{
  if(button.dataset.editOffer!==undefined){offerWizard(button.dataset.editOffer);return;}
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}
  if(button.dataset.unpublish!==undefined){changePublication(button.dataset.unpublish,false);return;}
+ if(button.id==='diagnose-asaas'){checkAsaas(button);return;}
  if(button.id==='new-coupon'){openCoupon();return;}
  if(button.hasAttribute('data-close')){closeModal();return;}
  if(button.hasAttribute('data-wizard-back')){step=Math.max(1,step-1);renderWizard();return;}
