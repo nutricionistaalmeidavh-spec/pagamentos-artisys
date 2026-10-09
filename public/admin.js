@@ -110,29 +110,33 @@ function renderMore(){
 }
 
 const diagnosticCodes={
- authenticated:'Autenticada',unauthorized:'Chave recusada (401)',forbidden:'Sem permissão para esta consulta (403)',
- provider_unavailable:'Asaas indisponível ou resposta inválida',provider_http_error:'Resposta de erro do Asaas',
- rate_limited:'Limite de consultas atingido',key_missing:'Chave ausente',invalid_api_host:'Host de API inválido',
- invalid_public_base_url:'PUBLIC_BASE_URL inválida',not_checked:'Não verificado',not_found:'Webhook não encontrado',
+ authenticated:'Autenticada',unauthorized:'Chave recusada (401)',forbidden:'Sem permissão (403)',
+ bad_request:'Requisição inválida (400)',not_found:'Endpoint não encontrado (404)',unprocessable:'Dados rejeitados (422)',
+ provider_unavailable:'Asaas indisponível',provider_http_error:'Erro HTTP do Asaas',
+ rate_limited:'Limite de consultas (429)',key_missing:'Chave ausente',invalid_api_host:'Host de API inválido',
+ invalid_public_base_url:'PUBLIC_BASE_URL inválida',not_checked:'Não verificado',
  duplicate:'Mais de um webhook com a mesma URL',found:'Webhook localizado'
 };
 const diagnosticState=(ok,yes,no)=>label(ok?[yes,'ok']:[no,'warn']);
 function renderAsaasDiagnostic(d){
  const hook=d.webhook||{},events=(hook.missingEvents||[]);
+ const apiReason=diagnosticCodes[d.apiStatus]||(d.apiHttpCode?'Erro HTTP '+d.apiHttpCode:'Não confirmada');
+ const webhookReason=hook.status==='not_found'?'Webhook não encontrado':diagnosticCodes[hook.status]||'Não verificado';
  const rows=[
   ['Ambiente',diagnosticState(d.environment==='production','Produção','Não é produção')],
-  ['Autenticação na API',diagnosticState(d.apiAuthenticated,'Autenticada',diagnosticCodes[d.apiStatus]||'Não confirmada')],
-  ['Webhook com URL correta',diagnosticState(hook.urlMatches,'Confirmada',diagnosticCodes[hook.status]||'Não confirmada')],
-  ['Webhook ativo',diagnosticState(hook.enabled===true,'Ativo','Inativo ou não verificado')],
-  ['Fila de envio',diagnosticState(hook.interrupted===false&&hook.found,'Sem interrupção','Interrompida ou não verificada')],
-  ['Eventos do checkout',diagnosticState(hook.eventsConfigured,'Configurados','Faltando: '+events.join(', ')||'Não verificados')],
-  ['Token local de webhook',diagnosticState(d.webhookTokenConfigured,'Cadastrado (sem comparação externa)','Ausente ou inválido')]
+  ['Autenticação na API',diagnosticState(d.apiAuthenticated,'Autenticada',apiReason)],
+  ['Webhook com URL correta',diagnosticState(hook.urlMatches,'Confirmada',webhookReason)],
+  ['Webhook ativo',diagnosticState(hook.enabled===true,'Ativo',hook.found?'Inativo':'Não verificado')],
+  ['Fila de envio',diagnosticState(hook.interrupted===false&&hook.found,'Sem interrupção',hook.found?'Interrompida':'Não verificada')],
+  ['Eventos do checkout',diagnosticState(hook.eventsConfigured,'Configurados',hook.found ? 'Faltando: '+events.length+' evento(s)' : 'Não verificados')],
+  ['Token local de webhook',diagnosticState(d.webhookTokenConfigured,'Cadastrado','Ausente ou inválido')]
  ];
  const detail=rows.map(([k,v])=>'<div><dt>'+esc(k)+'</dt><dd>'+v+'</dd></div>').join('');
  const overall=d.configurationReady
   ?'<p class="notice" style="margin-top:12px"><strong>Configuração consistente nas consultas de leitura.</strong> Ainda é necessário provar a chegada de um evento autenticado, a conciliação de pagamento e a entrega antes de liberar vendas.</p>'
   :'<div class="warning-note">Há pendências de configuração ou de permissão. Confira as linhas acima antes de liberar cobranças.</div>';
- el('asaas-diagnostic').innerHTML='<dl class="data-list">'+detail+'</dl>'+overall+'<p class="muted">Verificação de token recebido no webhook: não demonstrada. Pagamento real e entrega: não homologados. Não alteramos PAYMENTS_ENABLED.</p>';
+ const missingDetails=hook.found&&events.length?'<p class="muted" style="overflow-wrap:anywhere">Eventos faltantes: '+esc(events.join(', '))+'</p>':'';
+ el('asaas-diagnostic').innerHTML='<dl class="data-list">'+detail+'</dl>'+missingDetails+overall+'<p class="muted">O token do Asaas ainda não foi comparado ao token local. Pagamento e entrega não homologados. PAYMENTS_ENABLED não foi alterado.</p>';
 }
 async function checkAsaas(button){
  if(button.disabled)return;
