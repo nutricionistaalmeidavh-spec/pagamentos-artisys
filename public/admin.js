@@ -107,7 +107,7 @@ function renderReleases(data){
  const grouped=Object.entries(releaseNames).map(([offerId,title])=>{
   const items=availableReleases.filter(x=>x.offerId===offerId);
   const cards=items.map(x=>{
-   const status=x.outdated?label(['Versão antiga','warn']):x.stored?label(['No R2','ok']):x.error?label(['Verificação falhou','error']):label(['Pendente','warn']);
+   const status=x.outdated?label(['Versão antiga','warn']):x.verified?label(['R2 · SHA conferido','ok']):x.stored?label(['No R2 · SHA pendente','warn']):x.error?label(['Verificação falhou','error']):label(['Pendente','warn']);
    const size=(x.expectedSize/1024/1024).toFixed(1).replace('.',',')+' MB';
    const link='<a href="'+esc(x.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+(x.source==='github-actions'?'Ver build aprovado no GitHub':'Abrir arquivo no Drive')+'</a>';
    const action=!x.outdated&&!x.stored?'<button type="button" class="secondary" data-release-upload="'+esc(x.id)+'">Selecionar arquivo e enviar ao R2</button>':'';
