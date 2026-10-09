@@ -43,16 +43,23 @@ async function readExactPart(request,bytes){
 async function status(env){
  const r2=env.PAGAMENTO_ARTISYS_ARQUIVOS||null;
  const entries=await Promise.all(SYSTEM_RELEASES.map(async item=>{
-  let stored=false,bytes=null,error=null;
+  let stored=false,verified=false,bytes=null,error=null;
   if(r2){
-   try{const head=await r2.head(item.key);if(head){bytes=Number(head.size);stored=head.size===item.size;error=stored?null:'size_mismatch';}}
-   catch{error='r2_check_unavailable';}
+   try{
+    const head=await r2.head(item.key);
+    if(head){
+     bytes=Number(head.size);
+     stored=bytes===item.size;
+     verified=stored&&head.customMetadata?.sha256===item.sha256;
+     error=!stored?'size_mismatch':!verified?'sha256_not_verified':null;
+    }
+   }catch{error='r2_check_unavailable';}
   }
   return {id:item.id,offerId:item.offerId,platform:item.platform,version:item.version,
-    expectedName:item.fileName,expectedSize:item.size,outdated:item.outdated,stored,
+    expectedName:item.fileName,expectedSize:item.size,outdated:item.outdated,stored,verified,
     bytes,error,sourceUrl:item.sourceUrl||'https://drive.google.com/file/d/'+item.driveId+'/view',
     source:item.source||'google-drive',sha256:item.sha256||null,sourceCommit:item.sourceCommit||null,
-    deliverable:stored&&!item.outdated};
+    deliverable:verified&&!item.outdated};
  }));
  return response({storageConfigured:!!r2,items:entries,approvedCount:entries.filter(x=>x.deliverable).length,total:entries.length});
 }
