@@ -104,7 +104,7 @@ try{
  assert.equal(imported.price_cents,3853);
  assert.equal(imported.delivery_mode,'download');
  assert.equal(imported.artifact_name,'testes-e-controle-de-qualidade-v2.4.1.zip');
- assert.equal(check.offers.filter(o=>o.active===1).length,0,'Importação não publica ofertas');
+ assert.equal(check.first.published,0,'Nenhuma das 67 ofertas importadas deve ser publicada');
 
  assert.deepEqual(issues,[],'Console/HTTP falhou');
  console.log('Playwright admin mobile + desktop: login, pedidos, rascunho D1, bloqueio de publicação, navegação OK.');
