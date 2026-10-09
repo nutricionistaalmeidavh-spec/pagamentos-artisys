@@ -58,3 +58,8 @@ test('Worker encaminha o CSS dedicado do admin ao binding de assets',async()=>{
  assert.equal(res.status,200);
  assert.ok(paths.includes('/admin.css'));
 });
+
+test('formulários dinâmicos impedem submit nativo e não vazam tokens/valores na URL',()=>{
+ assert.match(js,/form\.addEventListener\('submit',e=>\{e\.preventDefault\(\);wizardNext\(form\);/);
+ assert.match(js,/form\.addEventListener\('submit',e=>\{e\.preventDefault\(\);saveCoupon\(form\);/);
+});
