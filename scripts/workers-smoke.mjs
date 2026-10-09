@@ -27,6 +27,8 @@ try{
  const page=await fetch(base+'/admin');
  assert.equal(page.status,200);
  assert.match(await page.text(),/Pagamento ArtiSys/);
+ const adminCSS=await fetch(base+'/assets/admin.css');assert.equal(adminCSS.status,200);assert.match(await adminCSS.text(),/safe-area-inset-bottom/);
+ const adminScript=await fetch(base+'/assets/admin.js');assert.equal(adminScript.status,200);assert.match(await adminScript.text(),/renderOrders/);
  assert.equal((await call('/v1/admin/summary')).status,401);
  const o=await call('/v1/admin/offers','POST',{id:'pdv-test',productId:'pdv-artisys',name:'PDV',priceCents:18900,deliveryMode:'manual',active:true},admin);
  assert.equal(o.status,200,JSON.stringify(o.data));
