@@ -6,11 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app.mjs';
 const admin='a'.repeat(40),hook='w'.repeat(40);
-async function setup(extra={}) {
+async function setup(extra={},providerResult=null) {
   const mocked = [];
   const app=createApp({dbPath:':memory:',autoprocess:false,env:{ADMIN_TOKEN:admin,ASAAS_WEBHOOK_TOKEN:hook,ASAAS_API_KEY:'sandbox-key',ASAAS_API_BASE_URL:'https://api-sandbox.asaas.com/v3',PUBLIC_BASE_URL:'https://pay.example.test',MANUAL_PIX_KEY:'chave-pix-exemplo',...extra},fetchImpl:async(url,opts)=>{
     mocked.push({url,opts});
     if(String(url).startsWith('https://licensing.example.test/'))return new Response(JSON.stringify({accepted:true}),{status:200,headers:{'content-type':'application/json'}});
+    if(String(url).includes('/payments?checkoutSession=')){
+      if(providerResult?.httpError)return new Response('error',{status:providerResult.httpError});
+      const data=providerResult||{hasMore:false,data:[{id:'pay_first',checkoutSession:'checkout_0123456789',value:189,status:'RECEIVED'}]};
+      return new Response(JSON.stringify(data),{status:200,headers:{'content-type':'application/json'}});
+    }
     return new Response(JSON.stringify({id:'checkout_0123456789',link:'https://sandbox.asaas.com/checkoutSession/show/checkout_0123456789',status:'ACTIVE'}),{status:200,headers:{'content-type':'application/json'}});
   }});
   await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
@@ -155,4 +160,41 @@ test('token de um pedido não concede acesso aos outros pedidos do mesmo e-mail'
     assert.equal(results.data.purchases[0].id,second.data.order.id);
     assert.notEqual(results.data.purchases[0].id,first.data.order.id);
   }finally{await t.dispose();}
+});
+
+test('evento CHECKOUT_PAID sem cobrança paga na API não ativa licença',async()=>{
+  const t=await setup({},{hasMore:false,data:[{id:'pay_pending',status:'PENDING',value:189,checkoutSession:'checkout_0123456789'}]});
+  try {
+    await t.offer();const created=await t.order(),id=created.data.order.id,key=created.data.orderAccessToken;
+    await t.call('/v1/orders/'+id+'/checkout','POST',{provider:'asaas'},key);
+    await t.call('/v1/webhooks/asaas','POST',{id:'evt_unpaid',event:'CHECKOUT_PAID',checkout:{id:'checkout_0123456789'}},'',{'asaas-access-token':hook});
+    await t.app.processPending();
+    assert.equal((await t.call('/v1/orders/'+id,'GET',null,key)).data.order.status,'pending');
+    assert.equal((await t.call('/v1/admin/fulfillments','GET',null,admin)).data.fulfillments.length,0);
+    assert.equal((await t.call('/v1/admin/events','GET',null,admin)).data.events[0].status,'failed');
+  } finally {await t.dispose();}
+});
+test('falha de consulta no Asaas mantém evento reprocessável',async()=>{
+  const t=await setup({},{httpError:503});
+  try {
+    await t.offer();const created=await t.order(),id=created.data.order.id,key=created.data.orderAccessToken;
+    await t.call('/v1/orders/'+id+'/checkout','POST',{provider:'asaas'},key);
+    await t.call('/v1/webhooks/asaas','POST',{id:'evt_outage',event:'CHECKOUT_PAID',checkout:{id:'checkout_0123456789'}},'',{'asaas-access-token':hook});
+    await t.app.processPending();
+    assert.equal((await t.call('/v1/orders/'+id,'GET',null,key)).data.order.status,'pending');
+    assert.equal((await t.call('/v1/admin/events','GET',null,admin)).data.events[0].status,'failed');
+  } finally {await t.dispose();}
+});
+test('reconciliar utiliza cobrança verificada e não depende da consulta ao checkout expirado',async()=>{
+  const t=await setup();
+  try {
+    await t.offer();const created=await t.order(),id=created.data.order.id,key=created.data.orderAccessToken;
+    await t.call('/v1/orders/'+id+'/checkout','POST',{provider:'asaas'},key);
+    const result=await t.call('/v1/admin/orders/'+id+'/reconcile','POST',{},admin);
+    assert.equal(result.status,200);
+    assert.equal(result.data.order.status,'paid');
+    const second=await t.call('/v1/admin/orders/'+id+'/reconcile','POST',{},admin);
+    assert.equal(second.status,200);
+    assert.equal((await t.call('/v1/admin/fulfillments','GET',null,admin)).data.fulfillments.length,1);
+  } finally {await t.dispose();}
 });

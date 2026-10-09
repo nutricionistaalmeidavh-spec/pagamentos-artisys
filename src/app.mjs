@@ -4,7 +4,7 @@ import { join, resolve, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { asaasRequest, createCheckout, checkoutAmountCents } from './asaas.mjs';
+import { createCheckout, checkoutAmountCents, verifyCheckoutPayment, verifyPaymentEvent } from './asaas.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -42,6 +42,9 @@ export function createApp(options={}) {
   const db=new DatabaseSync(dbPath);
   db.exec(readFileSync(resolve(ROOT,'schema.sql'),'utf8'));
   db.exec('PRAGMA busy_timeout = 5000');
+  if(!db.prepare('PRAGMA table_info(orders)').all().some(x=>x.name==='provider_payment_id'))
+    db.exec('ALTER TABLE orders ADD COLUMN provider_payment_id TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_provider_payment_id ON orders(provider_payment_id) WHERE provider_payment_id IS NOT NULL');
   const get=(q,...v)=>db.prepare(q).get(...v);
   const all=(q,...v)=>db.prepare(q).all(...v);
   const run=(q,...v)=>db.prepare(q).run(...v);
@@ -65,13 +68,19 @@ export function createApp(options={}) {
     run("INSERT OR IGNORE INTO fulfillments(id,order_id,action,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?)",uid(),order.id,action,stamp(),stamp());
     if(action==='activate') run("UPDATE orders SET fulfillment_status='pending',updated_at=? WHERE id=? AND fulfillment_status='not_started'",stamp(),order.id);
   };
-  const paid=(row,source)=>{
+  const paid=(row,source,proof=null)=>{
     if(row.status==='paid' || row.status==='fulfilled') return;
-    if(row.status==='refunded' || row.status==='canceled') throw error('invalid_payment_transition',409);
+    if(row.status!=='pending')throw error('invalid_payment_transition',409);
     txn(()=>{
+      if(proof){
+        if(row.payment_provider!=='asaas')throw error('provider_mismatch',409);
+        const collision=get('SELECT id FROM orders WHERE provider_payment_id=?',proof.paymentId);
+        if(collision&&collision.id!==row.id)throw error('payment_already_linked',409);
+        run('UPDATE orders SET provider_payment_id=?,subscription_id=COALESCE(?,subscription_id) WHERE id=?',proof.paymentId,proof.subscriptionId,row.id);
+      }
       run("UPDATE orders SET status='paid',checkout_state='paid',updated_at=? WHERE id=?",stamp(),row.id);
       queueFulfillment({...row,status:'paid'});
-      audit('payment_confirmed',row.id,{source});
+      audit('payment_confirmed',row.id,{source,paymentId:proof?.paymentId||null});
     });
   };
   const validateEvent=(event,row)=>{
@@ -79,7 +88,7 @@ export function createApp(options={}) {
     if(checkout.id!==row.checkout_id) throw new Error('checkout_id_mismatch');
     if(checkout.externalReference && checkout.externalReference!==row.id) throw new Error('external_reference_mismatch');
     const cents=checkoutAmountCents(checkout);
-    if(cents===null || cents!==row.amount_cents) throw new Error('checkout_amount_mismatch');
+    if(cents!==null && cents!==row.amount_cents) throw new Error('checkout_amount_mismatch');
   };
   let queueBusy=false;
   const processPending=async()=>{
@@ -94,30 +103,37 @@ export function createApp(options={}) {
           if(type==='CHECKOUT_PAID'){
             if(!order)throw new Error('checkout_order_not_linked');
             validateEvent(event,order);
-            if(order.status==='pending')paid(order,'asaas:' + stored.id);
-            else if(order.status!=='paid')throw new Error('invalid_payment_transition');
+            if(order.status==='pending'){
+              const proof=await verifyCheckoutPayment(env,fetchImpl,order);
+              if(!proof)throw new Error('payment_not_confirmed_by_provider');
+              paid(order,'asaas:' + stored.id,proof);
+            } else if(order.status!=='paid')throw new Error('invalid_payment_transition');
           } else if(type==='CHECKOUT_CANCELED' || type==='CHECKOUT_EXPIRED'){
             if(!order)throw new Error('checkout_order_not_linked');
             if(order.status==='pending')run("UPDATE orders SET status=?,checkout_state=?,updated_at=? WHERE id=?",type==='CHECKOUT_EXPIRED'?'expired':'canceled',type==='CHECKOUT_EXPIRED'?'expired':'canceled',stamp(),order.id);
           } else if(type==='CHECKOUT_CREATED'){
             if(!order)throw new Error('checkout_order_not_linked');
-          } else if(type==='PAYMENT_REFUNDED'){
-            const ref=String(obj(event.payment).externalReference||'');
-            const row=ref?get("SELECT * FROM orders WHERE id=? AND payment_provider='asaas'",ref):null;
+          } else if(type==='PAYMENT_REFUNDED'||type==='PAYMENT_PARTIALLY_REFUNDED'){
+            const paymentId=String(obj(event.payment).id||'');
+            const row=paymentId?get("SELECT * FROM orders WHERE provider_payment_id=? AND payment_provider='asaas'",paymentId):null;
             if(!row)throw new Error('refund_order_not_linked');
-            if(row.status==='paid'){
-              txn(()=>{run("UPDATE orders SET status='refunded',updated_at=? WHERE id=?",stamp(),row.id);queueFulfillment(row,'revoke');audit('refunded',row.id,{eventId:stored.id});});
-            }
+            await verifyPaymentEvent(env,fetchImpl,row,paymentId,['REFUNDED','PARTIALLY_REFUNDED']);
+            if(row.status==='paid')txn(()=>{
+              run("UPDATE orders SET status='refunded',updated_at=? WHERE id=?",stamp(),row.id);
+              queueFulfillment(row,'revoke');audit('refunded',row.id,{eventId:stored.id,paymentId});
+            });
           } else if(type==='SUBSCRIPTION_CREATED'){
             const sub=obj(event.subscription),ref=String(sub.externalReference||'');
             const row=ref?get("SELECT * FROM orders WHERE id=? AND payment_provider='asaas'",ref):null;
             if(!row)throw new Error('subscription_order_not_linked');
             if(sub.id)run('UPDATE orders SET subscription_id=?,updated_at=? WHERE id=?',String(sub.id),stamp(),row.id);
           } else if(type==='PAYMENT_RECEIVED'||type==='PAYMENT_CONFIRMED'){
-            const payment=obj(event.payment),subId=String(payment.subscription||'');
-            const subOrder=subId?get("SELECT * FROM orders WHERE subscription_id=? AND payment_provider='asaas'",subId):null;
-            if(subOrder && subOrder.status==='paid' && Math.round(Number(payment.value||0)*100)===subOrder.amount_cents)
-              queueFulfillment(subOrder,'renew:' + String(payment.id||stored.id));
+            const incoming=obj(event.payment),subId=String(incoming.subscription||''),paymentId=String(incoming.id||'');
+            const subOrder=subId?get("SELECT * FROM orders WHERE subscription_id=? AND payment_provider='asaas' AND sale_type!='one_time'",subId):null;
+            if(subOrder&&subOrder.status==='paid'&&paymentId!==subOrder.provider_payment_id){
+              await verifyPaymentEvent(env,fetchImpl,subOrder,paymentId,['RECEIVED','CONFIRMED','RECEIVED_IN_CASH']);
+              queueFulfillment(subOrder,'renew:'+paymentId);
+            }
           }
           run("UPDATE provider_events SET status='processed',last_error=NULL,processed_at=? WHERE id=?",stamp(),stored.id);
         } catch(e){
@@ -321,10 +337,9 @@ export function createApp(options={}) {
           }
           if(mark[2]==='reconcile'){
             if(row.payment_provider!=='asaas'||!row.checkout_id)throw error('no_checkout_to_reconcile',409);
-            const actual=await asaasRequest(env,fetchImpl,'/checkouts/'+encodeURIComponent(row.checkout_id));
-            validateEvent({checkout:actual},row);
-            if(String(actual.status).toUpperCase()==='PAID')paid(row,'asaas_reconciliation');
-            return json(res,200,{order:publicOrder(get('SELECT * FROM orders WHERE id=?',row.id)),providerStatus:actual.status});
+            const proof=await verifyCheckoutPayment(env,fetchImpl,row);
+            if(proof&&row.status==='pending')paid(row,'asaas_reconciliation',proof);
+            return json(res,200,{order:publicOrder(get('SELECT * FROM orders WHERE id=?',row.id)),providerStatus:proof?.status||'PENDING'});
           }
         }
         const replay=path.match(/^\/v1\/admin\/(events|fulfillments)\/([^/]+)\/replay$/);

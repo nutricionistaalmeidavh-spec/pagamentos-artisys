@@ -42,7 +42,7 @@ export async function createCheckout(env, fetchImpl, order, offer) {
     items: [{ name: offer.name, description: offer.description || offer.name, quantity: 1, value: order.amount_cents / 100 }]
   };
   if (recurring) {
-    const due = new Date(Date.now() + 86400000).toISOString().slice(0,10) + ' 12:00:00';
+    const due = new Date(Date.now()).toISOString().slice(0,10) + ' 12:00:00';
     body.subscription = { cycle: order.sale_type === 'yearly' ? 'YEARLY' : 'MONTHLY', nextDueDate: due };
   }
   const data = await asaasRequest(env, fetchImpl, '/checkouts', { method: 'POST', body: JSON.stringify(body) });
@@ -62,4 +62,32 @@ export function checkoutAmountCents(checkout) {
     cents += Math.round(val * 100) * qty;
   }
   return cents;
+}
+
+const PAID = new Set(['RECEIVED','CONFIRMED','RECEIVED_IN_CASH']);
+function paymentCents(value){const v=Number(value);return Number.isFinite(v)&&v>0?Math.round(v*100):null;}
+// Proveniência financeira derivada da API autenticada, nunca apenas do webhook.
+export async function verifyCheckoutPayment(env,fetchImpl,order){
+  if(order.payment_provider!=='asaas'||!order.checkout_id)throw new Error('checkout_unlinked');
+  const data=await asaasRequest(env,fetchImpl,'/payments?checkoutSession='+encodeURIComponent(order.checkout_id)+'&limit=100');
+  if(!Array.isArray(data.data)||data.hasMore===true)throw new Error('payments_lookup_incomplete');
+  const paid=data.data.filter(p=>PAID.has(String(p?.status||'').toUpperCase()));
+  if(paid.length===0)return null;
+  if(paid.length!==1)throw new Error('ambiguous_paid_checkout');
+  const p=paid[0];
+  if(!p.id||(p.checkoutSession&&String(p.checkoutSession)!==order.checkout_id)||(p.externalReference&&String(p.externalReference)!==order.id))
+    throw new Error('payment_not_linked');
+  if(paymentCents(p.value)!==order.amount_cents)throw new Error('payment_amount_mismatch');
+  return {paymentId:String(p.id),subscriptionId:p.subscription?String(p.subscription):null,status:String(p.status).toUpperCase()};
+}
+export async function verifyPaymentEvent(env,fetchImpl,order,paymentId,expectedStatuses){
+  if(!/^[A-Za-z0-9_-]{3,128}$/.test(String(paymentId||'')))throw new Error('invalid_payment_id');
+  const p=await asaasRequest(env,fetchImpl,'/payments/'+encodeURIComponent(paymentId));
+  if(String(p.id||'')!==paymentId||!expectedStatuses.includes(String(p.status||'').toUpperCase()))
+    throw new Error('payment_status_not_verified');
+  if(paymentCents(p.value)!==order.amount_cents)throw new Error('payment_amount_mismatch');
+  if(p.externalReference&&String(p.externalReference)!==order.id)throw new Error('payment_reference_mismatch');
+  if(String(p.checkoutSession||'')!==order.checkout_id && (!order.subscription_id||String(p.subscription||'')!==order.subscription_id))
+    throw new Error('payment_link_mismatch');
+  return p;
 }

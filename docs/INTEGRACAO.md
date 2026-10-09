@@ -16,7 +16,7 @@ Para conectar o site ArtiSys, direcione o botão do produto à URL https://SEU-D
 
 POST /v1/orders cria pedido, exige Idempotency-Key com 16 a 120 caracteres e retorna orderAccessToken. Trate esse token como segredo. POST /v1/orders/ID/checkout aceita provider=asaas ou provider=manual_pix, autenticado pelo Bearer do pedido. GET /v1/orders/ID exige o mesmo Bearer.
 
-Asaas é opt-in. Use ASAAS_API_KEY, ASAAS_API_BASE_URL (somente hosts oficiais), ASAAS_WEBHOOK_TOKEN e PUBLIC_BASE_URL https. A API em sandbox deve ser testada primeiro. O checkout é hospedado no Asaas. Redirecionamento do comprador não confirma o pagamento.
+Asaas é opt-in. Use ASAAS_API_KEY, ASAAS_API_BASE_URL (somente hosts oficiais), ASAAS_WEBHOOK_TOKEN e PUBLIC_BASE_URL https. O checkout é hospedado no Asaas. O gateway pode ser homologado centralmente, sem repetir o sandbox para cada novo produto. A primeira ativação da nova infraestrutura ainda requer conferência controlada do ambiente, webhook, domínio TLS e pagamento.
 
 Para Pix sem Asaas, defina MANUAL_PIX_KEY no ambiente privado. O painel de administração exige conferência do recebimento no banco da empresa antes de confirmar o pedido; comprovantes enviados não equivalem a confirmação financeira.
 
@@ -28,7 +28,7 @@ Configure no painel Asaas, com token **distinto da API key**:
 - Eventos: CHECKOUT_CREATED, CHECKOUT_PAID, CHECKOUT_CANCELED, CHECKOUT_EXPIRED.
 - Se utilizar assinaturas e estornos, habilite também os eventos específicos após validar o tratamento correspondente.
 
-O handler valida token, insere o ID único do evento em SQLite e responde HTTP 200 após persistir. Em seguida a fila local processa. CHECKOUT_PAID requer ID de checkout associado à ordem e valor total dos itens exatamente igual ao pedido. Falhas ficam registradas e podem ser reprocessadas pelo painel.
+O handler valida token, insere o ID único do evento em SQLite e responde HTTP 200 após persistir. Em seguida a fila local processa. CHECKOUT_PAID requer ID de checkout associado à ordem, valores coerentes e pagamento confirmado por GET /v3/payments filtrado pelo checkoutSession. Na ausência de cobrança paga, nada é liberado. A conciliação administrativa usa a mesma verificação, mesmo se a sessão do checkout não estiver mais consultável. Falhas ficam registradas e podem ser reprocessadas pelo painel.
 
 Eventos recebidos sem correspondência de pedido não criam pedidos nem ativam licenças. O processamento e a entrega são idempotentes por identificadores duráveis.
 
@@ -58,3 +58,9 @@ SQLite pressupõe execução com instância única: não exponha o mesmo arquivo
 ## Limitações intencionais
 
 Os conectores reais de ArtiSys ainda precisam ser configurados individualmente. Não há reembolso financeiro automático no gateway nem motor completo de upgrade/downgrade/cancelamento por parte do cliente. Para assinaturas, o checkout recorrente e eventos básicos estão disponíveis, mas todo o ciclo de gestão requer homologação. Não considerar o sistema aprovado para produção sem gate de sandbox e testes com pagamentos reais controlados.
+
+## Referência de produção reutilizada
+
+Padrão técnico estudado em ConsulroriaAmamenta-o/worker/cloudflare-billing-runtime.js: usar o webhook como gatilho e a API autenticada como fonte de confirmação; não reutilizar segredos, banco ou recursos da Gestão Amamentação.
+
+Novos produtos: validar somente preço e conector idempotente de entrega. Mudanças no motor financeiro, payload, autenticação ou gateway exigem nova homologação da parte alterada.

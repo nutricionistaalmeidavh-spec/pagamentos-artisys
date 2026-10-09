@@ -2,7 +2,7 @@
 
 Sistema financeiro independente para vender softwares e serviços ArtiSys diretamente no site, sem conectar pagamentos ao Obra na Mão, MercadoLivre ou Central de Licenças.
 
-**Status:** implementação inicial P0-P4 em homologação; não usar dinheiro real até concluir o gate de sandbox e segurança operacional.
+**Status:** implementação P0-P4 em homologação. O gateway pode ser homologado uma vez no motor central; cada novo aplicativo precisa apenas de testes do seu conector. Este motor independente ainda requer validação controlada do primeiro ambiente real antes de cobrar clientes.
 
 ## Entregas
 

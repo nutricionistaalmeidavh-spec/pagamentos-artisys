@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS orders (
  currency TEXT NOT NULL DEFAULT 'BRL', sale_type TEXT NOT NULL,
  delivery_mode TEXT NOT NULL, artifact_name TEXT,
  status TEXT NOT NULL DEFAULT 'pending', payment_provider TEXT,
- checkout_id TEXT UNIQUE, checkout_url TEXT, checkout_state TEXT NOT NULL DEFAULT 'not_started',
+ checkout_id TEXT UNIQUE, provider_payment_id TEXT UNIQUE, checkout_url TEXT, checkout_state TEXT NOT NULL DEFAULT 'not_started',
  fulfillment_status TEXT NOT NULL DEFAULT 'not_started',
  subscription_id TEXT, access_hash TEXT NOT NULL,
  idem_key TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
