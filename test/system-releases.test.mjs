@@ -30,8 +30,12 @@ test('inventário tem somente oito binários e quatro ofertas',()=>{
  assert.ok(SYSTEM_RELEASES.every(x=>x.key.startsWith('releases/')&&x.size>50*1024*1024));
  assert.ok(SYSTEM_RELEASES.every(x=>!x.key.includes('..')));
  const obra=SYSTEM_RELEASES.find(x=>x.id==='obra-windows');
- assert.equal(obra.outdated,true);
- assert.equal(obra.version,'1.0.19');
+ assert.equal(obra.outdated,false);
+ assert.equal(obra.version,'2.1.0');
+ assert.equal(obra.fileName,'Obra-na-Mao-Desktop-Setup-2.1.0.exe');
+ assert.equal(obra.size,125774266);
+ assert.equal(obra.sha256,'6f8a310f7d4ea6cc48fa1c6fbfa5448b78a4a4e97e484da071611785889af6a2');
+ assert.equal(obra.source,'github-actions');
 });
 test('status preserva links Drive apenas no endpoint autenticado e não aprova ausentes',async()=>{
  const b=mockBucket();
@@ -39,13 +43,22 @@ test('status preserva links Drive apenas no endpoint autenticado e não aprova a
  assert.equal(r.status,200);
  const j=await r.json();
  assert.equal(j.total,8);assert.equal(j.approvedCount,0);
- assert.ok(j.items.every(x=>x.stored===false&&x.sourceUrl.startsWith('https://drive.google.com/file/d/')));
- assert.equal(j.items.find(x=>x.id==='obra-windows').outdated,true);
+ assert.ok(j.items.every(x=>x.stored===false));
+ assert.equal(j.items.find(x=>x.id==='obra-windows').outdated,false);
+ assert.equal(j.items.find(x=>x.id==='obra-windows').source,'github-actions');
+ assert.equal(j.items.find(x=>x.id==='obra-windows').expectedSize,125774266);
+ assert.match(j.items.find(x=>x.id==='obra-windows').sourceUrl,/actions\/runs\/37495882884/);
+ assert.ok(j.items.filter(x=>x.source==='google-drive').every(x=>x.sourceUrl.startsWith('https://drive.google.com/file/d/')));
 });
-test('versão velha do Obra é bloqueada antes do acesso ao R2',async()=>{
- const b=mockBucket();
- await assert.rejects(()=>systemReleaseAdmin(req('/obra-windows/start','POST',{expectedSize:125560559}),{PAGAMENTO_ARTISYS_ARQUIVOS:b}),e=>e.message==='outdated_release_blocked'&&e.status===409);
+test('Obra 2.1.0 aceita somente tamanho exato do binário extraído, nunca ZIP ou v1.0.19',async()=>{
+ const b=mockBucket(),env={PAGAMENTO_ARTISYS_ARQUIVOS:b};
+ for(const invalidSize of [125560559,125917109]){
+  await assert.rejects(()=>systemReleaseAdmin(req('/obra-windows/start','POST',{expectedSize:invalidSize}),env),e=>e.message==='file_size_mismatch'&&e.status===409);
+ }
  assert.equal(b.calls.length,0);
+ const r=await systemReleaseAdmin(req('/obra-windows/start','POST',{expectedSize:125774266}),env);
+ assert.equal(r.status,201);
+ assert.ok(b.calls.some(c=>c[0]==='start'&&c[1]==='releases/obra-na-mao-obra-windows-Obra-na-Mao-Desktop-Setup-2.1.0.exe'));
 });
 test('não inicia upload com arquivo incompatível nem sobrescreve arquivo existente',async()=>{
  const b=mockBucket(),env={PAGAMENTO_ARTISYS_ARQUIVOS:b};
