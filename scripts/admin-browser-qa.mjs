@@ -45,6 +45,12 @@ try{
  await page.locator('#field-name').fill('Oferta de teste');
  await page.locator('#field-price').fill('42.50');
  await page.locator('#wizard-form button[type=submit]').click();
+ const reachedStep2=await page.locator('#field-deliveryMode').count();
+ if(!reachedStep2){
+  const problems=await page.locator('#wizard-form :invalid').evaluateAll(xs=>xs.map(x=>({id:x.id,value:x.value,reason:x.validationMessage})));
+  const stage=await page.locator('#modal-content').innerText();
+  throw Error('Não avançou para etapa de entrega: '+JSON.stringify({problems,stage:stage.slice(0,650)}));
+ }
  await page.locator('#field-deliveryMode').selectOption('manual');
  await page.locator('#wizard-form button[type=submit]').click();
  await page.getByRole('button',{name:'Revisar e salvar'}).click();
