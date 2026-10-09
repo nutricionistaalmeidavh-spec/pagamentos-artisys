@@ -57,10 +57,21 @@ SQLite pressupõe execução com instância única: não exponha o mesmo arquivo
 
 ## Limitações intencionais
 
-Os conectores reais de ArtiSys ainda precisam ser configurados individualmente. Não há reembolso financeiro automático no gateway nem motor completo de upgrade/downgrade/cancelamento por parte do cliente. Para assinaturas, o checkout recorrente e eventos básicos estão disponíveis, mas todo o ciclo de gestão requer homologação. Não considerar o sistema aprovado para produção sem gate de sandbox e testes com pagamentos reais controlados.
+Os conectores reais de ArtiSys ainda precisam ser configurados individualmente. Não há reembolso financeiro automático no gateway nem motor completo de upgrade/downgrade/cancelamento por parte do cliente. Para assinaturas, o checkout recorrente e eventos básicos estão disponíveis, mas todo o ciclo de gestão requer homologação. Não considerar o motor novo automaticamente aprovado para produção: sua ativação exige verificação controlada de credenciais, endpoint, webhook, gateway e monitoramento. Depois, produtos adicionais usam somente o gate de conector e preço, sem repetição do sandbox.
 
 ## Referência de produção reutilizada
 
 Padrão técnico estudado em ConsulroriaAmamenta-o/worker/cloudflare-billing-runtime.js: usar o webhook como gatilho e a API autenticada como fonte de confirmação; não reutilizar segredos, banco ou recursos da Gestão Amamentação.
 
 Novos produtos: validar somente preço e conector idempotente de entrega. Mudanças no motor financeiro, payload, autenticação ou gateway exigem nova homologação da parte alterada.
+
+### Gate de um novo produto (sem novo sandbox de cobrança)
+
+1. Cadastrar oferta com preço canônico, identificador estável e modalidade.
+2. Configurar endpoint e segredo HMAC do produto no servidor, sem copiar credenciais Asaas.
+3. Validar assinatura do evento, idempotência e estado de entrega com mocks/testes de integração.
+4. Simular evento verificado para assegurar que pagamento sem confirmação NÃO ativa licença.
+5. Validar ativação, eventual renovação e revogação do próprio produto, separadamente.
+6. Habilitar a oferta no site. Não modificar os demais aplicativos.
+
+A validação do gateway é responsabilidade do Pagamento ArtiSys e ocorre apenas quando o motor ou seu ambiente financeiro muda. Não se faz uma cobrança real a cada novo produto.

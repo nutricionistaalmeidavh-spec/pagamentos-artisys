@@ -46,6 +46,6 @@ O Asaas não é requisito para rodar o núcleo e tem tarifas próprias quando ha
 
 O painel de pedidos usa SQLite como fonte canônica. Cada produto mantém sua própria autoridade de licença e somente recebe um evento por conector HMAC. Sem conector, o pedido pago permanece aguardando configuração/entrega e não finge que uma licença foi ativada.
 
-**Limites desta entrega:** conectar produtos reais, testar compra ponta a ponta no sandbox Asaas, monitoramento, backups, limitação de tráfego e TLS de produção exigem configuração de ambiente. Estorno financeiro via API do Asaas, troca de plano, emissão fiscal e cancelamento self-service de assinaturas não são automatizados nesta versão.
+**Limites desta entrega:** conectar produtos reais, validar uma vez o ambiente do motor financeiro, configurar monitoramento, backups, limitação de tráfego e TLS de produção exigem preparação do operador. Estorno financeiro via API do Asaas, troca de plano, emissão fiscal e cancelamento self-service de assinaturas não são automatizados nesta versão.
 
-A venda só deve ser habilitada no site após execução e aprovação dos testes completos em ambiente homologado.
+A venda só deve ser habilitada no site após validação controlada do motor neste ambiente. Não há obrigação de nova compra sandbox sempre que outro produto aderir ao contrato já testado.
