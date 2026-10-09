@@ -1,7 +1,6 @@
-// Fontes: Google Drive (demais sistemas) + GitHub Actions aprovado (Obra na Mão), 2026-10-09.
-// Somente 4 sistemas, NENHUM dos 63 kits. Obra 2.1.0 vem do artifact oficial de build da main.
-// Fontes, tamanhos e hashes SHA-256 de binários reais verificados em 2026-10-09. GitHub Actions sincroniza com R2 após configuração autorizada.
-// Manifesto sozinho não publica ofertas, não concede acesso ao comprador e não faz upload de bytes no deploy.
+// Fontes: GitHub Releases e artefatos GitHub Actions aprovados por produto.
+// Os 4 sistemas usam fontes verificadas no GitHub. Nenhum dos 63 Dev Kits é alterado.
+// Os hashes são de bytes de instaladores; atualizar versão exige trocar fonte, tamanho e checksum.
 export const SYSTEM_RELEASES=Object.freeze([
   {
     "id": "obra-windows",
@@ -15,79 +14,92 @@ export const SYSTEM_RELEASES=Object.freeze([
     "sha256": "6f8a310f7d4ea6cc48fa1c6fbfa5448b78a4a4e97e484da071611785889af6a2",
     "sourceCommit": "d9398be587c51319fb9f61979f9538b010063d45",
     "outdated": false,
-    "key": "releases/obra-na-mao-obra-windows-Obra-na-Mao-Desktop-Setup-2.1.0.exe"
+    "key": "releases/obra-na-mao-obra-windows-Obra-na-Mao-Desktop-Setup-2.1.0.exe",
+    "sourceRepo": "nutricionistaalmeidavh-spec/OBRANAMAOCOMERCIAL"
   },
   {
     "id": "pdv-artisys-windows",
     "offerId": "pdv-artisys-restaurantes",
     "platform": "Windows 10/11",
-    "version": "Drive 2026-10-07",
-    "fileName": "Instalador-ArtisysPDV-Windows10-11.exe",
-    "size": 98109306,
-    "driveId": "1hAu1EhTGtSf3npdxsjl0X_RpdeSGHlSV",
-    "sha256": "00d6bc108a415637c171a8ff5fa631f9b0407cdc0baba80910908ff2403d6e8d",
+    "version": "2.0.7",
+    "fileName": "ArtiSys-PDV-2.0.7-x64-Setup.exe",
+    "size": 98112202,
+    "sha256": "5f3bdf6f71375aad4332b3b50435543a6e7706402985f9be90fa239ae8399eea",
     "outdated": false,
-    "key": "releases/pdv-artisys-restaurantes-pdv-artisys-windows-Instalador-ArtisysPDV-Windows10-11.exe"
+    "key": "releases/pdv-artisys-restaurantes-pdv-artisys-windows-ArtiSys-PDV-2.0.7-x64-Setup.exe",
+    "source": "github-release",
+    "sourceRepo": "nutricionistaalmeidavh-spec/PDV-ARTISYS",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/PDV-ARTISYS/releases/download/v2.0.7/ArtiSys-PDV-2.0.7-x64-Setup.exe"
   },
   {
     "id": "pdv-artisys-mac-intel",
     "offerId": "pdv-artisys-restaurantes",
     "platform": "macOS Intel",
-    "version": "Drive 2026-10-08",
-    "fileName": "Instalador-ArtisysPDV-macOS-Intel.dmg",
-    "size": 122669575,
-    "driveId": "1CqxfNSHU8PTIL3XzYzwa5LcOZn5NwTdc",
-    "sha256": "3f78cb766c2de963e8a9b86a42052c5510fade5f25ba4d93bd1123ad3610a3ab",
+    "version": "2.0.1",
+    "fileName": "ArtiSys-PDV-2.0.1-x64.dmg",
+    "size": 122669376,
+    "sha256": "c34076df9f55c6825372f10f2184739d3167bec3f21d898b2bd1543073e1bc90",
     "outdated": false,
-    "key": "releases/pdv-artisys-restaurantes-pdv-artisys-mac-intel-Instalador-ArtisysPDV-macOS-Intel.dmg"
+    "key": "releases/pdv-artisys-restaurantes-pdv-artisys-mac-intel-ArtiSys-PDV-2.0.1-x64.dmg",
+    "source": "github-actions",
+    "sourceRepo": "nutricionistaalmeidavh-spec/PDV-ARTISYS",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/PDV-ARTISYS/actions/runs/37938230759/artifacts/11619122261"
   },
   {
     "id": "pdv-artisys-mac-silicon",
     "offerId": "pdv-artisys-restaurantes",
     "platform": "macOS Apple Silicon",
-    "version": "Drive 2026-10-08",
-    "fileName": "Instalador-ArtisysPDV-macOS-AppleSilicon.dmg",
-    "size": 117168141,
-    "driveId": "1Lj2OY464T5vU5Xf5EOhUSkP0wOF3kjBz",
-    "sha256": "1d981da6add52def7e80a93ad8deb332f92e0c55ac919e6c5ba9fdc0d12705fd",
+    "version": "2.0.1",
+    "fileName": "ArtiSys-PDV-2.0.1-arm64.dmg",
+    "size": 117168262,
+    "sha256": "17c218c46b47fd0cf0f318ea8011d0fc8fc328c7a989d70258ee90666e2994f2",
     "outdated": false,
-    "key": "releases/pdv-artisys-restaurantes-pdv-artisys-mac-silicon-Instalador-ArtisysPDV-macOS-AppleSilicon.dmg"
+    "key": "releases/pdv-artisys-restaurantes-pdv-artisys-mac-silicon-ArtiSys-PDV-2.0.1-arm64.dmg",
+    "source": "github-actions",
+    "sourceRepo": "nutricionistaalmeidavh-spec/PDV-ARTISYS",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/PDV-ARTISYS/actions/runs/37938230759/artifacts/11619775854"
   },
   {
     "id": "pdv-nexus-win10",
     "offerId": "pdv-nexus",
     "platform": "Windows 10/11",
-    "version": "Drive 2026-09-29",
-    "fileName": "INSTALADOR-WINDOWS10.exe",
-    "size": 94403609,
-    "driveId": "1EXfLkUH7Jun6oMBkfljTQnUqtDAYOMAT",
-    "sha256": "2ba3c380376bad5443613300f886ef093c2973798d5149e93ff9a99d4fd34a1b",
+    "version": "2.0.1",
+    "fileName": "PDV-Nexus-Setup-2.0.1.exe",
+    "size": 94404666,
+    "sha256": "b2f4427cbd950fbdeee99b36bc9a41527a45df5817cd98d48a63c6f340fc883d",
     "outdated": false,
-    "key": "releases/pdv-nexus-pdv-nexus-win10-INSTALADOR-WINDOWS10.exe"
+    "key": "releases/pdv-nexus-pdv-nexus-win10-PDV-Nexus-Setup-2.0.1.exe",
+    "source": "github-release",
+    "sourceRepo": "nutricionistaalmeidavh-spec/PDVNexus",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/PDVNexus/releases/download/pdv-v2.0.1/PDV-Nexus-Setup-2.0.1.exe"
   },
   {
     "id": "pdv-nexus-win8",
     "offerId": "pdv-nexus",
     "platform": "Windows 8",
-    "version": "Drive 2026-09-29",
-    "fileName": "INSTALADOR-WINDOWS8.exe",
-    "size": 65376681,
-    "driveId": "1MI5V-OfCM4u9EL4m5ei3k_omRJ4xEKNw",
-    "sha256": "f357c6ee0d6cedac49bebd1b9d67d1d89e007f2943252383f0f6dc1d7a80c866",
+    "version": "2.0.1",
+    "fileName": "PDV-Nexus-Windows-8-32bit-Setup-2.0.1.exe",
+    "size": 65377131,
+    "sha256": "e348491d6ea56f00ac4f8c68b1f598102e303c412c0d71f204d93a29b965ba84",
     "outdated": false,
-    "key": "releases/pdv-nexus-pdv-nexus-win8-INSTALADOR-WINDOWS8.exe"
+    "key": "releases/pdv-nexus-pdv-nexus-win8-PDV-Nexus-Windows-8-32bit-Setup-2.0.1.exe",
+    "source": "github-release",
+    "sourceRepo": "nutricionistaalmeidavh-spec/PDVNexus",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/PDVNexus/releases/download/pdv-v2.0.1/PDV-Nexus-Windows-8-32bit-Setup-2.0.1.exe"
   },
   {
     "id": "pdv-nexus-win7",
     "offerId": "pdv-nexus",
     "platform": "Windows 7",
-    "version": "Drive 2026-09-29",
-    "fileName": "INSTALADOR-WINDOWS7.exe",
-    "size": 69007120,
-    "driveId": "1fxyWAOGPvpJ9zNaSBIxTVHNpbYlMSOkm",
-    "sha256": "2bf1ffb70037f8f5c6b752f8536d081d5d557c819749ab52154cc492462e1bb7",
+    "version": "2.0.1",
+    "fileName": "PDV-Nexus-Windows-7-Setup-2.0.1.exe",
+    "size": 69007542,
+    "sha256": "173edb5bc698d1df17e1d93b995e5fe5b3ffb6a96fe18f95d946016267185c04",
     "outdated": false,
-    "key": "releases/pdv-nexus-pdv-nexus-win7-INSTALADOR-WINDOWS7.exe"
+    "key": "releases/pdv-nexus-pdv-nexus-win7-PDV-Nexus-Windows-7-Setup-2.0.1.exe",
+    "source": "github-release",
+    "sourceRepo": "nutricionistaalmeidavh-spec/PDVNexus",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/PDVNexus/releases/download/pdv-v2.0.1/PDV-Nexus-Windows-7-Setup-2.0.1.exe"
   },
   {
     "id": "financeiro-windows",
