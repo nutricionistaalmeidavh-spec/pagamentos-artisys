@@ -1,11 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
+import { mkdtempSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createApp } from '../src/app.mjs';
 const admin='a'.repeat(40),hook='w'.repeat(40);
 async function setup(extra={}) {
   const mocked = [];
   const app=createApp({dbPath:':memory:',autoprocess:false,env:{ADMIN_TOKEN:admin,ASAAS_WEBHOOK_TOKEN:hook,ASAAS_API_KEY:'sandbox-key',ASAAS_API_BASE_URL:'https://api-sandbox.asaas.com/v3',PUBLIC_BASE_URL:'https://pay.example.test',MANUAL_PIX_KEY:'chave-pix-exemplo',...extra},fetchImpl:async(url,opts)=>{
     mocked.push({url,opts});
+    if(String(url).startsWith('https://licensing.example.test/'))return new Response(JSON.stringify({accepted:true}),{status:200,headers:{'content-type':'application/json'}});
     return new Response(JSON.stringify({id:'checkout_0123456789',link:'https://sandbox.asaas.com/checkoutSession/show/checkout_0123456789',status:'ACTIVE'}),{status:200,headers:{'content-type':'application/json'}});
   }});
   await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
@@ -79,4 +84,62 @@ test('cupom aplica desconto no servidor; não há checkout sem provedor ativo',a
     const result=await t.call('/v1/orders/'+created.data.order.id+'/checkout','POST',{provider:'asaas'},created.data.orderAccessToken);
     assert.equal(result.status,503);
   }finally{await t.dispose();}
+});
+
+test('painel e checkout são servidos sem vazar segredos',async()=>{
+  const t=await setup();try {
+    const adminPage=await fetch(t.base+'/admin');
+    const publicPage=await fetch(t.base+'/comprar?oferta=pdv-standard');
+    assert.equal(adminPage.status,200);
+    assert.equal(publicPage.status,200);
+    assert.match(adminPage.headers.get('content-security-policy'),/frame-ancestors 'none'/);
+    assert.doesNotMatch(await adminPage.text(),new RegExp(admin));
+    assert.match(await publicPage.text(),/Pagamento ArtiSys/);
+  }finally{await t.dispose();}
+});
+test('entrega via conector usa HMAC e não duplica acionamento',async()=>{
+  const secret='s'.repeat(48);
+  const t=await setup({
+    CONNECTOR_ALLOWED_ORIGINS:'https://licensing.example.test',
+    PRODUCT_CONNECTORS_JSON:JSON.stringify({'pdv-artisys':{url:'https://licensing.example.test/internal/activate',secret}})
+  });try{
+    await t.offer('pdv-standard',{deliveryMode:'webhook'});
+    const order=await t.order(),id=order.data.order.id,key=order.data.orderAccessToken;
+    await t.call('/v1/orders/'+id+'/checkout','POST',{provider:'manual_pix'},key);
+    await t.call('/v1/admin/orders/'+id+'/confirm-manual','POST',{},admin);
+    await t.app.processPending();
+    const delivered=(await t.call('/v1/orders/'+id,'GET',null,key)).data.order;
+    assert.equal(delivered.fulfillmentStatus,'delivered');
+    const calls=t.mocked.filter(x=>String(x.url).startsWith('https://licensing.example.test/'));
+    assert.equal(calls.length,1);
+    const req=calls[0].opts,headers=req.headers;
+    const expected=createHmac('sha256',secret).update(headers['x-artisys-timestamp']+'.'+req.body).digest('hex');
+    assert.equal(headers['x-artisys-signature'],'sha256='+expected);
+    await t.app.processPending();
+    assert.equal(t.mocked.filter(x=>String(x.url).startsWith('https://licensing.example.test/')).length,1);
+  }finally{await t.dispose();}
+});
+test('download local exige pedido pago e rejeita link simbólico',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'pagamento-artisys-'));
+  writeFileSync(join(dir,'instalador.exe'),'artefato-integro');
+  symlinkSync(join(dir,'instalador.exe'),join(dir,'atalho.exe'));
+  const t=await setup({RELEASES_DIR:dir});
+  try{
+    await t.offer('pdv-standard',{deliveryMode:'download',artifactName:'instalador.exe'});
+    const a=await t.order(),id=a.data.order.id,key=a.data.orderAccessToken;
+    const before=await fetch(t.base+'/v1/orders/'+id+'/download',{headers:{authorization:'Bearer '+key}});
+    assert.equal(before.status,409);
+    await t.call('/v1/orders/'+id+'/checkout','POST',{provider:'manual_pix'},key);
+    await t.call('/v1/admin/orders/'+id+'/confirm-manual','POST',{},admin);
+    await t.app.processPending();
+    const after=await fetch(t.base+'/v1/orders/'+id+'/download',{headers:{authorization:'Bearer '+key}});
+    assert.equal(after.status,200);assert.equal(await after.text(),'artefato-integro');
+    await t.offer('pdv-link',{deliveryMode:'download',artifactName:'atalho.exe'});
+    const b=await t.call('/v1/orders','POST',{offerId:'pdv-link',email:'other@example.test'},'',{'idempotency-key':'second-idempotency-00001'});
+    const bx=b.data.order.id,bkey=b.data.orderAccessToken;
+    await t.call('/v1/orders/'+bx+'/checkout','POST',{provider:'manual_pix'},bkey);
+    await t.call('/v1/admin/orders/'+bx+'/confirm-manual','POST',{},admin);
+    await t.app.processPending();
+    assert.equal((await t.call('/v1/orders/'+bx,'GET',null,bkey)).data.order.fulfillmentStatus,'waiting_configuration');
+  }finally{await t.dispose();rmSync(dir,{recursive:true,force:true});}
 });

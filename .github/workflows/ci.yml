@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
+    types: [opened, reopened, ready_for_review]
 permissions:
   contents: read
 jobs:
@@ -19,3 +20,9 @@ jobs:
         run: npm run check
       - name: Imagem self-hosted
         run: docker build -t pagamento-artisys:test .
+      - name: Smoke container
+        run: |
+          docker run -d --name pagamento-smoke -e HOST=0.0.0.0 -e ADMIN_TOKEN=test-only-not-a-real-secret-for-ci docker.io/library/pagamento-artisys:test
+          sleep 2
+          docker exec pagamento-smoke node -e "fetch('http://127.0.0.1:3080/healthz').then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(x=>console.log(x)).catch(()=>process.exit(1))"
+          docker rm -f pagamento-smoke

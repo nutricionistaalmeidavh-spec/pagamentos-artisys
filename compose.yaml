@@ -12,9 +12,11 @@ services:
     ports:
       - "127.0.0.1:3080:3080"
     volumes:
-      - ./data:/app/data
+      - pagamento_data:/app/data
     read_only: true
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
+volumes:
+  pagamento_data:

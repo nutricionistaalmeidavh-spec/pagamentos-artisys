@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { readFileSync, existsSync, statSync, createReadStream, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, lstatSync, createReadStream, mkdirSync } from 'node:fs';
 import { join, resolve, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -95,6 +95,7 @@ export function createApp(options={}) {
             if(!order)throw new Error('checkout_order_not_linked');
             validateEvent(event,order);
             if(order.status==='pending')paid(order,'asaas:' + stored.id);
+            else if(order.status!=='paid')throw new Error('invalid_payment_transition');
           } else if(type==='CHECKOUT_CANCELED' || type==='CHECKOUT_EXPIRED'){
             if(!order)throw new Error('checkout_order_not_linked');
             if(order.status==='pending')run("UPDATE orders SET status=?,checkout_state=?,updated_at=? WHERE id=?",type==='CHECKOUT_EXPIRED'?'expired':'canceled',type==='CHECKOUT_EXPIRED'?'expired':'canceled',stamp(),order.id);
@@ -135,7 +136,7 @@ export function createApp(options={}) {
           }
           if(job.action==='activate' && job.delivery_mode==='download'){
             const path=resolve(releases,job.artifact_name||'');
-            if(!validArtifact(job.artifact_name)||dirname(path)!==releases||!existsSync(path)||!statSync(path).isFile()) {
+            if(!validArtifact(job.artifact_name)||dirname(path)!==releases||!existsSync(path)||!lstatSync(path).isFile()) {
               run("UPDATE fulfillments SET status='waiting_configuration',last_error='artifact_unavailable',updated_at=? WHERE id=?",stamp(),job.id);
               run("UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",job.order_id);
               continue;
@@ -229,7 +230,7 @@ export function createApp(options={}) {
           if(row.status!=='paid'||row.fulfillment_status!=='delivered'||row.delivery_mode!=='download')throw error('download_not_ready',409);
           if(!validArtifact(row.artifact_name))throw error('download_unavailable',404);
           const file=resolve(releases,row.artifact_name);
-          if(dirname(file)!==releases||!existsSync(file)||!statSync(file).isFile())throw error('download_unavailable',404);
+          if(dirname(file)!==releases||!existsSync(file)||!lstatSync(file).isFile())throw error('download_unavailable',404);
           res.writeHead(200,{'content-type':'application/octet-stream','content-disposition':'attachment; filename="'+basename(file)+'"','cache-control':'no-store','x-content-type-options':'nosniff'});
           return createReadStream(file).pipe(res);
         }
