@@ -198,7 +198,7 @@ async function process(request,env,ctx){
   await initialize(env);
   return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true'});
  }
- if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
+ if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
   const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
   const url=new URL(request.url);url.pathname=asset;url.search='';
   return env.PAGAMENTO_ARTISYS_ASSETS.fetch(new Request(url.toString(),{method:'GET'}));
