@@ -25,6 +25,21 @@ const uploadId=x=>{
  if(typeof x!=='string'||!/^[A-Za-z0-9._~-]{8,1024}$/.test(x))throw fail('invalid_upload_id');
  return x;
 };
+async function readExactPart(request,bytes){
+ if(Number(request.headers.get('content-length')||0)>bytes)throw fail('invalid_part_size',413);
+ if(!request.body)throw fail('missing_part_body',400);
+ const reader=request.body.getReader(),data=new Uint8Array(bytes);let offset=0;
+ try{
+  while(true){
+   const {done,value}=await reader.read();
+   if(done)break;
+   if(offset+value.byteLength>bytes)throw fail('invalid_part_size',413);
+   data.set(value,offset);offset+=value.byteLength;
+  }
+ }finally{reader.releaseLock();}
+ if(offset!==bytes)throw fail('invalid_part_size',413);
+ return data;
+}
 async function status(env){
  const r2=env.PAGAMENTO_ARTISYS_ARQUIVOS||null;
  const entries=await Promise.all(SYSTEM_RELEASES.map(async item=>{
@@ -62,8 +77,7 @@ export async function systemReleaseAdmin(request,env){
  if(method==='PUT'&&action.startsWith('part/')){
   const number=Number(action.split('/')[1]);
   const identifier=uploadId(new URL(request.url).searchParams.get('uploadId'));
-  const data=await request.arrayBuffer();
-  if(data.byteLength!==expectedPartSize(item,number))throw fail('invalid_part_size',413);
+  const data=await readExactPart(request,expectedPartSize(item,number));
   const upload=r2.resumeMultipartUpload(item.key,identifier);
   const part=await upload.uploadPart(number,data);
   return response({partNumber:part.partNumber,etag:part.etag});
