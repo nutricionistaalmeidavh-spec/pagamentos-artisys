@@ -10,7 +10,7 @@ const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const jwk={...publicKey.export({format:'jwk'}),use:'sig',alg:'RS256',kid:'test-key-1'};
 function b64(x){return Buffer.from(typeof x==='string'?x:JSON.stringify(x)).toString('base64url')}
 const claim=()=>({iss:'https://token.actions.githubusercontent.com',aud:'artisys-release-sync-r2',repository:repo,
- sub:'repo:'+repo+':ref:refs/heads/main',ref:'refs/heads/main',workflow_ref:workflow,
+ sub:'repo:nutricionistaalmeidavh-spec@230622366/pagamentos-artisys@1411079341:ref:refs/heads/main',repository_id:'1411079341',repository_owner_id:'230622366',ref:'refs/heads/main',workflow_ref:workflow,
  event_name:'push',iat:now-2,nbf:now-2,exp:now+250});
 function jwt(payload=claim()){const h=b64({alg:'RS256',typ:'JWT',kid:'test-key-1'}),p=b64(payload);const sig=createSign('RSA-SHA256').update(h+'.'+p).sign(privateKey).toString('base64url');return h+'.'+p+'.'+sig}
 const keys=async()=>Response.json({keys:[jwk]});
@@ -28,7 +28,9 @@ test('OIDC rejeita audience, branch, fluxo, horário e repositório incorretos',
  const bad=[
   {aud:'another'}, {ref:'refs/heads/feature'}, {workflow_ref:repo+'/.github/workflows/ci.yml@refs/heads/main'},
   {event_name:'pull_request'}, {repository:'somebody/else'}, {exp:now-100},
-  {nbf:now+100}, {iat:now+100}, {sub:'repo:'+repo+':environment:prod'}
+  {nbf:now+100}, {iat:now+100}, {sub:'repo:'+repo+':ref:refs/heads/main'},
+  {repository_id:'123456789'}, {repository_owner_id:'99999'},
+  {sub:'repo:'+repo+':environment:prod'}
  ];
  for(const change of bad)assert.equal(await verifyReleaseGithubOidc(req(jwt({...claim(),...change})),keys,now),false,JSON.stringify(change));
 });
