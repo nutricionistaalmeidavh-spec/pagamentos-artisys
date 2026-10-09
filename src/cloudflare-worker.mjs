@@ -309,8 +309,9 @@ async function process(request,env,ctx){
  if(path.startsWith('/v1/admin/')){
   const releaseRoute=path==='/v1/admin/system-releases'||path.startsWith('/v1/admin/system-releases/');
   // OIDC grants ONLY the release-binary API; all other admin paths require ADMIN_TOKEN.
-  if(!releaseRoute||!(await verifyReleaseGithubOidc(request,fetch)))await admin(request,env);
-  if(releaseRoute)return systemReleaseAdmin(request,env);
+  const githubVerified=releaseRoute&&await verifyReleaseGithubOidc(request,fetch);
+  if(!githubVerified)await admin(request,env);
+  if(releaseRoute)return systemReleaseAdmin(request,env,{githubVerified});
   if(method==='GET'&&path==='/v1/admin/asaas/diagnostic')return send(await diagnoseAsaas(env,fetch));
   if(method==='GET'&&path==='/v1/admin/summary'){
    const summary=await one(d,"SELECT count(*) AS orders,coalesce(sum(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) AS receivedCents,sum(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN status='refunded' THEN 1 ELSE 0 END) AS refunded FROM orders");
