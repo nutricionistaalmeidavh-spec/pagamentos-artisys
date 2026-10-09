@@ -19,7 +19,12 @@ const looksJwt=x=>typeof x==='string'&&x.length>80&&x.length<10000&&x.split('.')
 function validatedClaims(c,epochSeconds){
  const repo=c?.repository,workflow=ALLOWLIST.get(repo);
  if(!workflow||c.iss!==ISSUER||c.aud!==GITHUB_RELEASE_AUDIENCE)return false;
- if(c.ref!=='refs/heads/main'||c.sub!=='repo:'+repo+':ref:refs/heads/main')return false;
+ if(c.ref!=='refs/heads/main')return false;
+ // GitHub's 2026 OIDC sub pins immutable owner/repo IDs (API-confirmed).
+ const expectedSubject='repo:nutricionistaalmeidavh-spec@230622366/pagamentos-artisys@1411079341:ref:refs/heads/main';
+ if(c.sub!==expectedSubject)return false;
+ if(c.repository_id!==undefined&&String(c.repository_id)!=='1411079341')return false;
+ if(c.repository_owner_id!==undefined&&String(c.repository_owner_id)!=='230622366')return false;
  if(c.workflow_ref!==repo+'/'+workflow+'@refs/heads/main')return false;
  if(!['push','workflow_dispatch'].includes(c.event_name))return false;
  if(!Number.isFinite(c.exp)||!Number.isFinite(c.iat)||!Number.isFinite(c.nbf))return false;
