@@ -57,7 +57,7 @@ async function status(env){
   }
   return {id:item.id,offerId:item.offerId,platform:item.platform,version:item.version,
     expectedName:item.fileName,expectedSize:item.size,outdated:item.outdated,stored,verified,
-    bytes,error,sourceUrl:item.sourceUrl||'https://drive.google.com/file/d/'+item.driveId+'/view',
+    bytes,error,sourceUrl:item.sourceUrl,sourceRepo:item.sourceRepo,
     source:item.source||'google-drive',sha256:item.sha256||null,sourceCommit:item.sourceCommit||null,
     deliverable:verified&&!item.outdated};
  }));
