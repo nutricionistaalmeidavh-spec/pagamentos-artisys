@@ -119,16 +119,15 @@ def obtain(entry: dict, folder: pathlib.Path, github_token: str | None) -> pathl
         # Releases públicas: não dependem de OAuth do Drive nem de PAT.
         download_stream(entry["sourceUrl"], {"User-Agent": "ArtiSys-Release-Sync"}, dest)
     else:
-        if not github_token:
-            raise SyncError("ARTISYS_SOURCE_GITHUB_TOKEN ausente para o artifact GitHub Actions")
         artifact_id = entry["sourceUrl"].rsplit("/", 1)[-1]
         url = f"https://api.github.com/repos/{entry['sourceRepo']}/actions/artifacts/{artifact_id}/zip"
         zip_path = folder / "github-artifact.zip"
-        download_stream(url, {
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "ArtiSys-Release-Sync",
-        }, zip_path)
+        # Four source repositories are public; GitHub Actions artifact API
+        # permits unauthenticated reads of public resources.
+        headers = {"Accept": "application/vnd.github+json", "User-Agent": "ArtiSys-Release-Sync"}
+        if github_token:
+            headers["Authorization"] = f"Bearer {github_token}"
+        download_stream(url, headers, zip_path)
         with zipfile.ZipFile(zip_path) as archive:
             names = [x for x in archive.infolist() if pathlib.PurePosixPath(x.filename).name == entry["fileName"] and not x.is_dir()]
             if len(names) != 1 or names[0].file_size != entry["size"]:
