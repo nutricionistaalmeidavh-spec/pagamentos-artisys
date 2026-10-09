@@ -63,7 +63,7 @@ async function status(env){
  }));
  return response({storageConfigured:!!r2,items:entries,approvedCount:entries.filter(x=>x.deliverable).length,total:entries.length});
 }
-export async function systemReleaseAdmin(request,env){
+export async function systemReleaseAdmin(request,env,{githubVerified=false}={}){
  const method=request.method,path=new URL(request.url).pathname;
  if(method==='GET'&&path==='/v1/admin/system-releases')return status(env);
  const match=/^\/v1\/admin\/system-releases\/([a-z0-9-]+)\/(start|complete|abort|part\/[0-9]+)$/.exec(path);
@@ -74,11 +74,13 @@ export async function systemReleaseAdmin(request,env){
  if(method==='POST'&&action==='start'){
   const body=await read(request);
   if(body.expectedSize!==item.size)throw fail('file_size_mismatch',409);
+  if(githubVerified&&body.sha256!==item.sha256)throw fail('file_hash_mismatch',409);
   const existing=await r2.head(item.key);
   if(existing)throw fail('release_already_present',409);
   const upload=await r2.createMultipartUpload(item.key,{
    httpMetadata:{contentType:'application/octet-stream'},
-   customMetadata:{offerId:item.offerId,variantId:item.id,origin:item.source}
+   customMetadata:{offerId:item.offerId,variantId:item.id,origin:item.source,
+    ...(githubVerified?{sha256:item.sha256,verifiedBy:'github-oidc-ci'}:{})}
   });
   return response({uploadId:upload.uploadId,partSize:RELEASE_PART_SIZE,partCount:partCount(item),expectedSize:item.size},201);
  }
@@ -100,7 +102,7 @@ export async function systemReleaseAdmin(request,env){
   const upload=r2.resumeMultipartUpload(item.key,identifier);
   await upload.complete(parts);
   const final=await r2.head(item.key);
-  if(!final||Number(final.size)!==item.size){
+  if(!final||Number(final.size)!==item.size||(githubVerified&&final.customMetadata?.sha256!==item.sha256)){
    await r2.delete(item.key);
    throw fail('uploaded_size_mismatch',409);
   }
