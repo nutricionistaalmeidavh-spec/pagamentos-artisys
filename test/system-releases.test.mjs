@@ -15,7 +15,7 @@ function mockBucket(){
    calls.push(['resume',key,uploadId]);
    return {
     uploadPart:async(n,data)=>{calls.push(['part',n,data.byteLength]);return {partNumber:n,etag:'etag012345'+n};},
-    complete:async parts=>{calls.push(['complete',parts.length]);existing.set(key,{size:item.size});},
+    complete:async parts=>{calls.push(['complete',parts.length]);existing.set(key,{size:item.size,customMetadata:{sha256:item.sha256}});},
     abort:async()=>{calls.push(['abort']);}
    };
   },
@@ -98,4 +98,19 @@ test('não permite gerenciar releases sem token administrativo',async()=>{
  const b=mockBucket(),env={ADMIN_TOKEN:'admin-test-1234567890123456789012',PAGAMENTO_ARTISYS_DB:fakeD1,PAGAMENTO_ARTISYS_ARQUIVOS:b};
  const r=await worker.fetch(new Request(root+'/v1/admin/system-releases'),env,{waitUntil(){}});
  assert.equal(r.status,401);assert.equal(b.calls.length,0);
+});
+
+test('não aprova instalador com tamanho correto mas hash não atestado',async()=>{
+ const b=mockBucket();b.existing.set(item.key,{size:item.size,customMetadata:{sha256:'0'.repeat(64)}});
+ const result=await(await systemReleaseAdmin(req(''),{PAGAMENTO_ARTISYS_ARQUIVOS:b})).json();
+ const row=result.items.find(x=>x.id===item.id);
+ assert.equal(row.stored,true);
+ assert.equal(row.verified,false);
+ assert.equal(row.deliverable,false);
+ assert.equal(row.error,'sha256_not_verified');
+});
+test('todos os 8 binários têm hash real e proveniência definida',()=>{
+ assert.ok(SYSTEM_RELEASES.every(x=>/^[0-9a-f]{64}$/.test(x.sha256)));
+ assert.equal(SYSTEM_RELEASES.filter(x=>x.source==='github-actions').length,1);
+ assert.equal(SYSTEM_RELEASES.filter(x=>x.driveId).length,7);
 });

@@ -13,3 +13,9 @@ data/
 coverage/
 playwright-report/
 .wrangler/
+
+# Instaladores de distribuição nunca entram no Git; o manifesto é canônico.
+.release-sync/
+*.exe
+*.dmg
+*.blockmap

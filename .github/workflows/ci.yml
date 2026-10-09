@@ -20,6 +20,13 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Testes Node e Worker
         run: npm run check
+      - name: Testes do pipeline seguro R2
+        run: python3 -m unittest discover -s test -p 'test_*sync.py'
+      - name: Validar manifesto GitHub/Drive (sem segredos)
+        run: |
+          mkdir -p .release-sync
+          node scripts/export-release-manifest.mjs > .release-sync/manifest.json
+          python3 scripts/sync_system_releases.py --validate-only
       - name: Teste local Worker D1
         run: npm run test:worker
       - name: Chromium para QA da interface
