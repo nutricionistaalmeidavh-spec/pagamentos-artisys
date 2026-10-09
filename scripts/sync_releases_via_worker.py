@@ -57,6 +57,15 @@ class OidcClient:
             raise SyncError("Falha ao obter OIDC do GitHub") from exc
         self.token = result["value"]
         self.issued = time.monotonic()
+        # Claims (never the signed JWT) are safe operational diagnostics.
+        import base64
+        try:
+            encoded = self.token.split(".")[1]
+            claims = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+            keys = ("iss", "aud", "repository", "sub", "ref", "workflow_ref", "event_name")
+            print("OIDC metadata: " + json.dumps({k: claims.get(k) for k in keys},sort_keys=True),flush=True)
+        except Exception:
+            print("OIDC metadata indisponíveis para diagnóstico",flush=True)
         return self.token
 
     def call(self, path, method="GET", payload=None, *, json_body=True, attempts=4):
@@ -99,14 +108,19 @@ class OidcClient:
         deadline = time.monotonic() + timeout_seconds
         while True:
             try:
-                return self.call(STATUS_PATH, attempts=2)
-            except SyncError as exc:
-                # The Worker's auto-deploy may finish after the GitHub push fires
-                # this workflow. Wait for the signed-OIDC release endpoint.
+                with urllib.request.urlopen(self.root + "/healthz", timeout=15) as response:
+                    health = json.load(response)
+                if health.get("releaseSyncAuth") == "github-oidc-v1":
+                    # Now a 401 indicates a real auth error, NOT deployment race.
+                    return self.call(STATUS_PATH, attempts=2)
                 if time.monotonic() + 15 >= deadline:
-                    raise SyncError("Novo Worker com autenticação OIDC não ficou disponível") from exc
-                print("Aguardando deploy do Worker e rota OIDC...", flush=True)
-                time.sleep(15)
+                    raise SyncError("Deploy do Worker não publicou o endpoint OIDC")
+                print("Aguardando deploy do Worker (healthz ainda sem github-oidc-v1)...", flush=True)
+            except urllib.error.URLError as exc:
+                if time.monotonic() + 15 >= deadline:
+                    raise SyncError("Worker indisponível no prazo de espera") from exc
+                print("Aguardando Worker ficar disponível...",flush=True)
+            time.sleep(15)
 
 
 def checked_status(payload, entries):
