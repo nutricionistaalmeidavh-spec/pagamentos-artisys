@@ -10,3 +10,10 @@
 .data-list dd{flex:1 1 57%;min-width:0;max-width:57%;overflow-wrap:anywhere;text-align:right}
 .data-list dd .label{max-width:100%;white-space:normal;overflow-wrap:anywhere;border-radius:9px;line-height:1.4;text-align:right;display:inline-flex;justify-content:flex-end}
 @media(max-width:380px){.data-list dt{flex-basis:40%;max-width:40%}.data-list dd{flex-basis:60%;max-width:60%}.data-list dd .label{font-size:10px;padding:5px 8px}}
+
+.release-row{border-top:1px solid var(--line);padding:14px 0;display:grid;gap:7px}
+.release-row .card-bottom{margin-top:4px;flex-wrap:wrap;gap:8px;align-items:center}
+.release-row .card-bottom .small{flex:1;min-width:120px;overflow-wrap:anywhere}
+.release-row .card-bottom button{white-space:normal;max-width:100%}
+#releases-status:not(:empty){padding:10px 12px;background:var(--blue-soft);border:1px solid var(--line);border-radius:10px;font-size:13px;overflow-wrap:anywhere}
+@media(max-width:799px){.release-row .card-bottom{align-items:stretch;flex-direction:column}.release-row .card-bottom button{width:100%}}

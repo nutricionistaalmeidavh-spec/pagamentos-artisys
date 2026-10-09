@@ -57,6 +57,11 @@
     <section class="screen" id="mais" aria-labelledby="mais-title" hidden>
       <div class="heading"><div><span class="eyebrow">Conexões e suporte</span><h1 id="mais-title">Mais</h1><p>Diagnósticos, webhooks, entregas e segurança.</p></div><button class="quiet refresh" data-refresh type="button">Atualizar</button></div>
       <div id="integrations-content" class="stack"><div class="loading">Carregando integrações…</div></div>
+      <div class="section-heading"><h2>Instaladores dos sistemas</h2></div>
+      <p class="muted">Somente os quatro sistemas. Envio privado ao R2, sem liberar vendas nem alterar os 63 Dev Kits.</p>
+      <input type="file" id="release-file-input" hidden aria-label="Selecionar instalador para importar ao R2">
+      <div id="releases-status" role="status" aria-live="polite"></div>
+      <div id="releases-content" class="stack"><div class="loading">Verificando instaladores…</div></div>
       <div class="section-heading"><h2>Eventos do Asaas</h2></div><div id="events-content" class="stack"></div>
       <div class="section-heading"><h2>Fila de entregas</h2></div><div id="fulfillments-content" class="stack"></div>
     </section>
