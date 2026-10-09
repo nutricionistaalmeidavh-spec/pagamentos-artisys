@@ -1,5 +1,6 @@
 import {createCheckout,verifyCheckoutPayment,verifyPaymentEvent} from './asaas.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
+import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 
 const schema=[
   "CREATE TABLE IF NOT EXISTS offers(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',price_cents INTEGER NOT NULL CHECK(price_cents>0),currency TEXT NOT NULL DEFAULT 'BRL',sale_type TEXT NOT NULL DEFAULT 'one_time',delivery_mode TEXT NOT NULL DEFAULT 'manual',artifact_name TEXT,active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
@@ -43,6 +44,25 @@ const one=async(db,sql,...args)=>query(db,sql,...args).first();
 const rows=async(db,sql,...args)=>(await query(db,sql,...args).all()).results||[];
 const exec=async(db,sql,...args)=>query(db,sql,...args).run();
 async function audit(db,kind,subject,details){await exec(db,"INSERT INTO audit_logs(id,kind,subject_id,details,created_at) VALUES(?,?,?,?,?)",uuid(),kind,subject,JSON.stringify(details),now());}
+
+const CATALOG_SOURCE='devkittools-sistemas-2026-10-09';
+async function insertMissingCatalogDrafts(db){
+ // Falha fechada: esta operação nunca publica ou atualiza um registro existente.
+ if(CATALOG_DRAFTS.length!==67||CATALOG_DRAFTS.some(x=>x.active!==false))throw Error('catalog_draft_invalid');
+ const stamp=now();
+ const statements=CATALOG_DRAFTS.map(v=>db.prepare("INSERT OR IGNORE INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?)").bind(v.id,v.productId,v.name,v.description,v.priceCents,v.saleType,v.deliveryMode,v.artifactName||null,0,stamp,stamp));
+ const result=await db.batch(statements);
+ const created=result.reduce((sum,item)=>sum+Number(item?.meta?.changes||0),0);
+ return {expected:CATALOG_DRAFTS.length,created,alreadyExisting:CATALOG_DRAFTS.length-created,active:false};
+}
+async function initialCatalogImport(env){
+ const db=env.PAGAMENTO_ARTISYS_DB;
+ const done=await one(db,"SELECT id FROM audit_logs WHERE kind='catalog_seed_completed' AND subject_id=? LIMIT 1",CATALOG_SOURCE);
+ if(done)return;
+ const result=await insertMissingCatalogDrafts(db);
+ await audit(db,'catalog_seed_completed',CATALOG_SOURCE,result);
+}
+
 async function admin(request,env){
  if(!env.ADMIN_TOKEN||env.ADMIN_TOKEN.length<32)throw fail('admin_not_configured',503);
  if(!await safeEqual(headerToken(request),env.ADMIN_TOKEN))throw fail('unauthorized',401);
@@ -197,7 +217,8 @@ async function process(request,env,ctx){
  if(method==='OPTIONS')return new Response(null,{status:allowedOrigin?204:403,headers});
  if(method==='GET'&&path==='/healthz'){
   await initialize(env);
-  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true'});
+  const count=await one(d,"SELECT COUNT(*) AS total FROM offers WHERE id IN ("+CATALOG_DRAFTS.map(()=>'?').join(',')+")",...CATALOG_DRAFTS.map(x=>x.id));
+  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67});
  }
  if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
   const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
@@ -293,6 +314,18 @@ async function process(request,env,ctx){
    return send({summary:{...summary,failedEvents:broken.count},integrations:Object.entries(connections).map(([productId,x])=>({productId,configured:!!(x?.url&&x?.secret)}))});
   }
   if(method==='GET'&&path==='/v1/admin/offers')return send({offers:await rows(d,'SELECT * FROM offers ORDER BY updated_at DESC LIMIT 200')});
+
+  if(method==='GET'&&path==='/v1/admin/catalog-drafts/status'){
+   const ids=CATALOG_DRAFTS.map(x=>x.id),existing=await rows(d,"SELECT id,active,price_cents,product_id FROM offers WHERE id IN ("+ids.map(()=>'?').join(',')+")",...ids);
+   const dbById=new Map(existing.map(x=>[x.id,x]));
+   return send({expected:CATALOG_DRAFTS.length,present:existing.length,missing:ids.filter(id=>!dbById.has(id)).length,published:existing.filter(x=>x.active===1).length,changed:CATALOG_DRAFTS.filter(x=>{const old=dbById.get(x.id);return old&&(old.price_cents!==x.priceCents||old.product_id!==x.productId);}).length});
+  }
+  if(method==='POST'&&path==='/v1/admin/catalog-drafts/import'){
+   const result=await insertMissingCatalogDrafts(d);
+   await audit(d,'catalog_draft_import',CATALOG_SOURCE,result);
+   return send(result);
+  }
+
   if(method==='POST'&&path==='/v1/admin/offers'){
    const v=isObj(await read(request)),id=String(v.id||''),pid=String(v.productId||''),price=Number(v.priceCents),sale=String(v.saleType||'one_time'),delivery=String(v.deliveryMode||'manual'),artifact=v.artifactName||null;
    if(!validId(id)||!validId(pid)||!String(v.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw fail('invalid_offer');
@@ -347,5 +380,6 @@ export default {
  },
  async scheduled(event,env,ctx){
   ctx.waitUntil((async()=>{await initialize(env);await reconcilePending(env);await queueWorker(env);})().catch(e=>console.error('scheduled_error',String(e.message).slice(0,120))));
+  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
  }
 };

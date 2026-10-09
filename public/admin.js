@@ -6,7 +6,7 @@ const icons={home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1
 const icon=name=>'<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[name]||icons.shield)+'</svg>';
 document.querySelectorAll('[data-icon]').forEach(n=>n.innerHTML=icon(n.dataset.icon));
 const key='artisys-payment-admin';
-let token=sessionStorage.getItem(key)||'',screen='inicio',filter='todos',orders=[],offers=[],coupons=[],summary=null,fulfillments=[],events=[],integrations=[],health=null,offerDraft=null,lastFocus=null,modalMode='',busy=false;
+let token=sessionStorage.getItem(key)||'',screen='inicio',filter='todos',orders=[],offers=[],coupons=[],summary=null,fulfillments=[],events=[],integrations=[],health=null,catalogStatus=null,offerDraft=null,lastFocus=null,modalMode='',busy=false;
 const validScreens=['inicio','pedidos','ofertas','mais'];
 const paymentsOnline=()=>health?.paymentsEnabled===true;
 const paymentLabel=status=>{
@@ -61,8 +61,8 @@ async function load(name=screen){
    orders=(await api('orders')).orders||[];renderOrders();
   }else if(name==='ofertas'){
    el('offers-list').innerHTML='<div class="loading">Atualizando ofertas…</div>';
-   const [a,c,h,s]=await Promise.all([api('offers'),api('coupons'),publicStatus(),api('summary')]);
-   offers=a.offers||[];coupons=c.coupons||[];health=h;integrations=s.integrations||[];renderOffers();
+   const [a,c,h,s,cat]=await Promise.all([api('offers'),api('coupons'),publicStatus(),api('summary'),api('catalog-drafts/status')]);
+   offers=a.offers||[];coupons=c.coupons||[];health=h;integrations=s.integrations||[];catalogStatus=cat;renderOffers();
   }else if(name==='mais'){
    for(const id of ['integrations-content','events-content','fulfillments-content'])el(id).innerHTML='<div class="loading">Atualizando…</div>';
    const [s,h,e,f]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments')]);
@@ -94,8 +94,21 @@ function renderOrders(){
 }
 const saleName=s=>({one_time:'Pagamento único',monthly:'Assinatura mensal',yearly:'Assinatura anual'}[s]||s);
 const deliveryName=s=>({manual:'Manual',download:'Download protegido',webhook:'Conector automático'}[s]||s);
+
+function importCatalog(){
+ const status=catalogStatus||{},missing=Number(status.missing||0);
+ if(missing===0){toast('As 67 ofertas já estão cadastradas.');return;}
+ openModal('Importar catálogo da planilha','<p>Serão cadastrados '+missing+' itens faltantes do catálogo de 63 Dev Kits e 4 sistemas ArtiSys. Os nomes, IDs e preços vêm da planilha consolidada. Todos entram como rascunho, sem liberar vendas.</p><div class="warning-note">As ofertas já existentes não serão alteradas. Downloads precisam de arquivos no R2; sistemas permanecem em entrega manual até configurar conectores.</div><div class="form-actions"><button class="secondary" type="button" data-close>Cancelar</button><button id="confirm-catalog-import" class="primary" type="button">Cadastrar rascunhos</button></div>');
+ el('confirm-catalog-import').addEventListener('click',async e=>withBusy(e.currentTarget,async()=>{
+  const outcome=await api('catalog-drafts/import','POST',{});
+  closeModal();toast(outcome.created+' ofertas cadastradas. '+outcome.alreadyExisting+' já existiam.');
+  await load('ofertas');
+ }));
+}
 function renderOffers(){
  el('offers-info').innerHTML=!paymentsOnline()?'<div class="notice"><span>'+icon('shield')+'</span><div><strong>Publicação suspensa</strong><p>Cobranças estão desativadas. Crie e edite ofertas como rascunho; a publicação será liberada após verificação da operação.</p></div></div>':'';
+ const pending=Number(catalogStatus?.missing||0);
+ el('offers-info').innerHTML+=(pending>0?'<div class="surface ops-card"><div class="card-top"><strong>Catálogo da planilha</strong>'+label(['Faltam '+pending+' de 67','warn'])+'</div><p class="muted">63 Dev Kits e 4 sistemas ArtiSys. Importação preserva ofertas anteriores e mantém todas as novas como rascunho.</p><button class="secondary" type="button" id="import-catalog">Cadastrar ofertas faltantes</button></div>':'<div class="notice"><span>'+icon('package')+'</span><div><strong>Catálogo consolidado</strong><p>Os 67 itens da planilha constam no painel. Confira os dados e prepare as entregas antes de publicar.</p></div></div>');
  el('offers-list').innerHTML=offers.length?'<div class="cards">'+offers.map(o=>'<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+'</span><div><strong>'+esc(o.name)+'</strong><div class="small">'+esc(saleName(o.sale_type))+' · '+esc(deliveryName(o.delivery_mode))+'</div></div></div>'+label(o.active?['Publicada','ok']:['Rascunho',''])+'</div><div class="card-bottom"><span class="amount">'+money(o.price_cents)+'</span><button class="secondary" data-offer="'+esc(o.id)+'" type="button">Revisar →</button></div></article>').join('')+'</div>':empty('Seu catálogo começa aqui','Crie a primeira oferta. Ela ficará em rascunho até você revisar e publicar.','<button class="primary" type="button" data-new-offer>+ Nova oferta</button>');
  el('coupons-list').innerHTML=coupons.length?'<div class="surface ops-card">'+coupons.map(c=>'<div class="card-bottom" style="margin:0;padding:10px 0"><span><strong>'+esc(c.code)+'</strong><span class="small"> · '+esc(c.percent_off)+'% de desconto</span></span>'+label(c.active?['Ativo','ok']:['Inativo',''])+'</div>').join('')+'</div>':empty('Nenhum cupom cadastrado','Se precisar de uma promoção, crie um cupom para calcular o desconto no servidor.');
 }
@@ -276,6 +289,7 @@ document.addEventListener('click',e=>{
  if(button.dataset.filter){filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>{const on=b===button;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on));});renderOrders();return;}
  if(button.dataset.order){openOrder(button.dataset.order);return;}
  if(button.dataset.offer){openOffer(button.dataset.offer);return;}
+ if(button.id==='import-catalog'){importCatalog();return;}
  if(button.id==='new-offer'||button.hasAttribute('data-new-offer')){offerWizard();return;}
  if(button.dataset.editOffer!==undefined){offerWizard(button.dataset.editOffer);return;}
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}

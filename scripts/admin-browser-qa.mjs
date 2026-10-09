@@ -83,6 +83,39 @@ try{
  await page.getByRole('heading',{name:'O que precisa da sua atenção?'}).waitFor();
  await page.screenshot({path:'qa-shots/05-inicio-desktop.png',fullPage:true});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),'Rolagem horizontal no desktop');
+ await page.locator('[data-screen=ofertas]').click();
+ await page.locator('#import-catalog').waitFor();
+ await page.locator('#import-catalog').click();
+ await page.locator('#confirm-catalog-import').click();
+ await page.locator('#offers-list [data-offer="artisys-qa"]').waitFor();
+ const check=await page.evaluate(async token=>{
+  const headers={authorization:'Bearer '+token};
+  const first=await(await fetch('/v1/admin/catalog-drafts/status',{headers})).json();
+  const second=await(await fetch('/v1/admin/catalog-drafts/import',{method:'POST',headers})).json();
+  const offers=await(await fetch('/v1/admin/offers',{headers})).json();
+  return {first,second,offers:offers.offers};
+ },admin);
+ assert.deepEqual([check.first.expected,check.first.present,check.first.missing],[67,67,0]);
+ assert.equal(check.second.created,0,'Reimportação deve ser idempotente');
+ assert.equal(check.second.alreadyExisting,67);
+ const imported=check.offers.find(o=>o.id==='artisys-qa');
+ assert.ok(imported,'Kit não encontrado no D1');
+ assert.equal(imported.active,0);
+ assert.equal(imported.price_cents,3853);
+ assert.equal(imported.delivery_mode,'download');
+ assert.equal(imported.artifact_name,'testes-e-controle-de-qualidade-v2.4.1.zip');
+ assert.equal(check.first.published,0,'Nenhuma das 67 ofertas importadas deve ser publicada');
+ const healthAfter=await(await fetch(base+'/healthz')).json();
+ assert.equal(healthAfter.catalogDraftsLoaded,true,'Health confirma todos os 67 rascunhos no D1');
+ const cronTest=await fetch(base+'/cdn-cgi/local/scheduled?format=json');
+ assert.equal(cronTest.status,200,'Cron local deve responder e preservar os rascunhos');
+ const statusAfterCron=await page.evaluate(async token=>{
+  const r=await fetch('/v1/admin/catalog-drafts/status',{headers:{authorization:'Bearer '+token}});
+  return r.json();
+ },admin);
+ assert.deepEqual([statusAfterCron.present,statusAfterCron.missing],[67,0]);
+
+
  assert.deepEqual(issues,[],'Console/HTTP falhou');
  console.log('Playwright admin mobile + desktop: login, pedidos, rascunho D1, bloqueio de publicação, navegação OK.');
 }finally{

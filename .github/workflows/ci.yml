@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   test:
-    name: Node + Worker D1 + Docker
+    name: Node + Worker D1 + Playwright
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -33,7 +33,5 @@ jobs:
           name: pagamento-artisys-admin-mobile-qa
           path: qa-shots/
           if-no-files-found: ignore
-      - name: Build Docker opcional
-        run: docker build -t pagamento-artisys:test .
       - name: Empacotar Worker sem publicar
         run: npx wrangler deploy --dry-run --outdir .wrangler/build
