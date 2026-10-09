@@ -1,0 +1,21 @@
+name: Pagamento ArtiSys CI
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    name: API + contratos + Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Sintaxe e testes
+        run: npm run check
+      - name: Imagem self-hosted
+        run: docker build -t pagamento-artisys:test .

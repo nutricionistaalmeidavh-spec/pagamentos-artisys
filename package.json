@@ -8,7 +8,7 @@
     "start": "node src/main.mjs",
     "dev": "node --watch src/main.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/app.mjs && node --check src/asaas.mjs && node --check src/main.mjs && node --test test/*.test.mjs"
+    "check": "node --check src/app.mjs && node --check src/asaas.mjs && node --check src/main.mjs && node --check public/admin.js && node --check public/checkout.js && node --test test/*.test.mjs"
   },
-  "license": "AGPL-3.0-or-later"
+  "license": "MIT"
 }
