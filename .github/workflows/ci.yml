@@ -1,0 +1,28 @@
+name: Pagamento ArtiSys CI
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, ready_for_review]
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Node + Worker D1 + Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar Wrangler
+        run: npm install --no-audit --no-fund
+      - name: Testes Node e Worker
+        run: npm run check
+      - name: Teste local Worker D1
+        run: npm run test:worker
+      - name: Build Docker opcional
+        run: docker build -t pagamento-artisys:test .
+      - name: Empacotar Worker sem publicar
+        run: npx wrangler deploy --dry-run --outdir .wrangler/build

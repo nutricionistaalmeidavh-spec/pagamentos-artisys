@@ -1,0 +1,217 @@
+openapi: 3.1.0
+info:
+  title: Pagamento ArtiSys API
+  version: 0.1.0
+  description: API independente para pagamentos, pedidos e entregas digitais.
+servers:
+  - url: https://pagamentos.example.com
+components:
+  securitySchemes:
+    orderBearer: {type: http, scheme: bearer}
+    adminBearer: {type: http, scheme: bearer}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}
+    Order:
+      type: object
+      required: [id, offerId, productId, amountCents, currency, status, fulfillmentStatus]
+      properties:
+        id: {type: string, format: uuid}
+        offerId: {type: string}
+        productId: {type: string}
+        amountCents: {type: integer}
+        currency: {type: string, const: BRL}
+        status: {type: string, enum: [pending, paid, canceled, expired, refunded]}
+        fulfillmentStatus: {type: string}
+        checkoutUrl: {type: [string, 'null']}
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        '200': {description: Serviço ativo}
+  /v1/catalog:
+    get:
+      summary: Ofertas públicas canônicas
+      responses:
+        '200': {description: Catálogo}
+  /v1/orders:
+    post:
+      summary: Cria pedido com preço calculado no servidor
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: {type: string, minLength: 16, maxLength: 120}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [offerId, email]
+              properties:
+                offerId: {type: string}
+                email: {type: string, format: email}
+                name: {type: string}
+                couponCode: {type: string}
+      responses:
+        '201': {description: Pedido e orderAccessToken}
+        '400': {description: Dados inválidos}
+        '404': {description: Oferta não publicada}
+        '409': {description: Idempotency-Key já utilizada}
+  /v1/orders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      summary: Consulta pedido
+      security: [{orderBearer: []}]
+      responses:
+        '200': {description: Pedido}
+        '404': {description: Inexistente ou não autorizado}
+  /v1/orders/{id}/checkout:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      summary: Inicia checkout Asaas ou Pix manual
+      security: [{orderBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider: {type: string, enum: [asaas, manual_pix]}
+      responses:
+        '200': {description: Checkout preparado}
+        '409': {description: Checkout já em reconciliação ou pedido inválido}
+        '502': {description: Resposta ambígua do gateway}
+        '503': {description: Provedor não configurado}
+  /v1/orders/{id}/download:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      summary: Download após pagamento e entrega
+      security: [{orderBearer: []}]
+      responses:
+        '200': {description: Conteúdo binário}
+        '409': {description: Não autorizado para download}
+  /v1/customer/purchases:
+    get:
+      summary: Consulta do pedido associado ao token, sem escopo sobre o e-mail
+      security: [{orderBearer: []}]
+      responses:
+        '200': {description: Compras}
+        '401': {description: Não autorizado}
+  /v1/webhooks/asaas:
+    post:
+      summary: Persiste evento autenticado do Asaas
+      parameters:
+        - name: asaas-access-token
+          in: header
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, event]
+              properties:
+                id: {type: string}
+                event: {type: string}
+                checkout: {type: object}
+                payment: {type: object}
+      responses:
+        '200': {description: Evento persistido}
+        '400': {description: Evento inválido}
+        '401': {description: Token inválido}
+        '503': {description: Configuração ausente}
+  /v1/admin/summary:
+    get:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Métricas}
+        '401': {description: Token inválido}
+  /v1/admin/offers:
+    get:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Lista de ofertas}
+    post:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Oferta criada ou atualizada}
+  /v1/admin/coupons:
+    get:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Cupons}
+    post:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Cupom atualizado}
+  /v1/admin/orders:
+    get:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Pedidos}
+  /v1/admin/orders/{id}/confirm-manual:
+    post:
+      security: [{adminBearer: []}]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Confirmado pelo administrador}
+  /v1/admin/orders/{id}/deliver-manual:
+    post:
+      security: [{adminBearer: []}]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Entrega manual registrada}
+  /v1/admin/orders/{id}/reconcile:
+    post:
+      security: [{adminBearer: []}]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Consulta provedor para reconciliação}
+  /v1/admin/events:
+    get:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Eventos}
+  /v1/admin/fulfillments:
+    get:
+      security: [{adminBearer: []}]
+      responses:
+        '200': {description: Entregas}
+  /v1/admin/events/{id}/replay:
+    post:
+      security: [{adminBearer: []}]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        '202': {description: Reprocessamento solicitado}
+  /v1/admin/fulfillments/{id}/replay:
+    post:
+      security: [{adminBearer: []}]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        '202': {description: Reprocessamento solicitado}
