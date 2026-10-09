@@ -174,6 +174,8 @@ function renderWizard(){
   content+='<dl class="data-list"><div><dt>Oferta</dt><dd>'+esc(d.name)+'</dd></div><div><dt>Preço</dt><dd>'+money(Math.round(Number(d.price)*100))+'</dd></div><div><dt>Modalidade</dt><dd>'+esc(saleName(d.saleType))+'</dd></div><div><dt>Entrega</dt><dd>'+esc(deliveryName(d.deliveryMode))+'</dd></div><div><dt>Ao salvar</dt><dd>'+esc(d.active?'Mantém status atual':'Rascunho')+'</dd></div></dl><div class="warning-note">'+(d.active?'Editar uma oferta publicada afeta novas compras. Confira valor e modalidade.':'A nova oferta será salva como rascunho, sem liberar vendas automaticamente.')+'</div><div class="form-actions"><button class="secondary" type="button" data-wizard-back>Voltar</button><button class="primary" type="button" data-save-offer>Revisar e salvar</button></div>';
  }
  openModal(edit?'Editar oferta':'Nova oferta',content);
+ const form=el('wizard-form');
+ if(form)form.addEventListener('submit',e=>{e.preventDefault();wizardNext(form);});
 }
 function wizardNext(form){
  if(!form.reportValidity())return;
@@ -208,6 +210,16 @@ function changePublication(id,active){
 }
 function openCoupon(){
  openModal('Novo cupom','<p>O desconto será calculado no servidor quando o cliente criar um pedido.</p><form id="coupon-form" class="form-stack">'+field('Código','code','','text','required pattern="[A-Za-z0-9_-]{3,30}"')+field('Desconto (%)','percentOff','','number','required min="1" max="90" step="1"')+'<div class="form-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit">Salvar cupom</button></div></form>');
+ const form=el('coupon-form');
+ if(form)form.addEventListener('submit',e=>{e.preventDefault();saveCoupon(form);});
+}
+
+async function saveCoupon(form){
+ const d=new FormData(form),button=form.querySelector('button[type="submit"]');
+ await withBusy(button,async()=>{
+  await api('coupons','POST',{code:String(d.get('code')||'').toUpperCase().trim(),percentOff:Number(d.get('percentOff')),active:true});
+  closeModal();toast('Cupom salvo no servidor.');await load('ofertas');
+ });
 }
 el('login-form').addEventListener('submit',async e=>{
  e.preventDefault();const button=el('login-button'),candidate=new FormData(e.currentTarget).get('token');token=String(candidate||'').trim();button.disabled=true;el('login-error').textContent='';
@@ -256,12 +268,6 @@ document.addEventListener('keydown',e=>{
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
  }
 });
-el('modal-content').addEventListener('submit',e=>{
- if(e.target.id==='wizard-form'){e.preventDefault();wizardNext(e.target);}
- if(e.target.id==='coupon-form'){e.preventDefault();const form=e.target,d=new FormData(form),button=form.querySelector('button[type="submit"]');withBusy(button,async()=>{
-  await api('coupons','POST',{code:String(d.get('code')||'').toUpperCase().trim(),percentOff:Number(d.get('percentOff')),active:true});
-  closeModal();toast('Cupom salvo no servidor.');await load('ofertas');
- });}
-});
+
 window.addEventListener('popstate',()=>{if(token){const param=new URLSearchParams(location.search).get('screen');if(validScreens.includes(param))navigate(param,true);}});
 if(token){api('summary').then(()=>{signedIn(true);const param=new URLSearchParams(location.search).get('screen');navigate(validScreens.includes(param)?param:'inicio',true);}).catch(()=>{sessionStorage.removeItem(key);token='';signedIn(false);});}else signedIn(false);
