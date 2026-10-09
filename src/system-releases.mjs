@@ -1,17 +1,20 @@
-// Fontes consultadas no Google Drive (metadados de arquivos e pastas), 2026-10-09.
-// Somente 4 sistemas, NENHUM dos 63 kits. Obra 1.0.19 é antigo frente ao desktop 2.1.0 no GitHub.
+// Fontes: Google Drive (demais sistemas) + GitHub Actions aprovado (Obra na Mão), 2026-10-09.
+// Somente 4 sistemas, NENHUM dos 63 kits. Obra 2.1.0 vem do artifact oficial de build da main.
 // O manifest registra origem, NÃO transfere arquivos nem aprova publicação.
 export const SYSTEM_RELEASES=Object.freeze([
   {
     "id": "obra-windows",
     "offerId": "obra-na-mao",
     "platform": "Windows",
-    "version": "1.0.19",
-    "fileName": "Obra-na-Mao-Desktop-Setup-1.0.19.exe",
-    "size": 125560559,
-    "driveId": "1QmjxuBMfCAgjeg0gzGjUZKRfIgnxr04x",
-    "outdated": true,
-    "key": "releases/obra-na-mao-obra-windows-Obra-na-Mao-Desktop-Setup-1.0.19.exe"
+    "version": "2.1.0",
+    "fileName": "Obra-na-Mao-Desktop-Setup-2.1.0.exe",
+    "size": 125774266,
+    "source": "github-actions",
+    "sourceUrl": "https://github.com/nutricionistaalmeidavh-spec/OBRANAMAOCOMERCIAL/actions/runs/37495882884/artifacts/11427268634",
+    "sha256": "6f8a310f7d4ea6cc48fa1c6fbfa5448b78a4a4e97e484da071611785889af6a2",
+    "sourceCommit": "d9398be587c51319fb9f61979f9538b010063d45",
+    "outdated": false,
+    "key": "releases/obra-na-mao-obra-windows-Obra-na-Mao-Desktop-Setup-2.1.0.exe"
   },
   {
     "id": "pdv-artisys-windows",
