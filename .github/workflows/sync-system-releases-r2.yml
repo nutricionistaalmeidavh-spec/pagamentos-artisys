@@ -66,4 +66,6 @@ jobs:
           python scripts/sync_releases_via_worker.py --validate-only
           python -m unittest discover -s test -p 'test_*sync.py'
       - name: Sincronizar instaladores de GitHub Releases/Artifacts com R2 privado
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/sync_releases_via_worker.py
