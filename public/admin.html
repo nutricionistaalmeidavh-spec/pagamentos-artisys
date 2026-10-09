@@ -1,6 +1,74 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pagamento ArtiSys · Painel</title><link rel="stylesheet" href="/assets/style.css"></head><body>
-<header class="topbar"><a class="brand" href="/admin"><span class="brand-icon">A</span> Pagamento <strong>ArtiSys</strong></a><span class="muted-header">Administração independente</span></header>
-<main class="wrap"><section id="signin" class="login box"><p class="kicker">ACESSO ADMINISTRATIVO</p><h1>Seu centro de pagamentos.</h1><p class="muted">Acesse usando o token privado do Pagamento ArtiSys.</p><form id="login-form"><label>Token administrativo<input name="token" type="password" required autocomplete="off" placeholder="Token do servidor"></label><button class="primary" type="submit">Entrar</button></form><p class="error" id="login-error"></p></section>
-<section id="workspace" hidden><div class="page-title"><div><p class="kicker">PAGAMENTO ARTISYS</p><h1>Operação financeira</h1><p class="muted">Pedidos, cobranças e entregas em um só lugar.</p></div><button id="logout" class="secondary">Sair</button></div>
-<nav class="tabs" aria-label="Áreas do painel"><button data-tab="dashboard" class="active">Visão geral</button><button data-tab="offers">Ofertas</button><button data-tab="orders">Pedidos</button><button data-tab="events">Webhooks</button><button data-tab="integrations">Integrações</button></nav>
-<p id="alert" class="error" role="alert"></p><section id="content"></section></section></main><footer>Pagamento ArtiSys · núcleo self-hosted independente</footer><script type="module" src="/assets/admin.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f7fb">
+<meta name="description" content="Administração de pedidos, ofertas, pagamentos e entregas do Pagamento ArtiSys.">
+<title>Pagamento ArtiSys · Operação</title>
+<link rel="stylesheet" href="/assets/admin.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/admin" aria-label="Pagamento ArtiSys — início"><span class="brand-mark">A</span><span><strong>Pagamento ArtiSys</strong><small>Central de operações</small></span></a>
+  <div class="top-actions"><span id="runtime-indicator" class="runtime-indicator" hidden></span><button class="text-button" id="logout" type="button" hidden>Sair</button></div>
+</header>
+<main class="container">
+  <section class="auth-panel surface" id="signin" aria-labelledby="signin-title">
+    <span class="eyebrow">Acesso administrativo</span><h1 id="signin-title">Seu centro de pagamentos.</h1>
+    <p>Entre com o token privado configurado no Cloudflare. Nenhuma chave de pagamento será exibida aqui.</p>
+    <form id="login-form" class="form-stack">
+      <label for="admin-token">Token administrativo</label>
+      <input id="admin-token" name="token" type="password" required autocomplete="off" placeholder="Cole seu token de acesso">
+      <button type="submit" class="primary" id="login-button">Entrar no painel</button>
+    </form>
+    <p class="feedback error" role="alert" id="login-error"></p>
+  </section>
+  <div id="workspace" hidden>
+    <nav class="navigation" aria-label="Navegação principal">
+      <button class="nav-button is-active" data-screen="inicio" type="button" aria-current="page"><span aria-hidden="true" data-icon="home"></span><span>Início</span></button>
+      <button class="nav-button" data-screen="pedidos" type="button"><span aria-hidden="true" data-icon="receipt"></span><span>Pedidos</span></button>
+      <button class="nav-button" data-screen="ofertas" type="button"><span aria-hidden="true" data-icon="package"></span><span>Ofertas</span></button>
+      <button class="nav-button" data-screen="mais" type="button"><span aria-hidden="true" data-icon="grid"></span><span>Mais</span></button>
+    </nav>
+    <div id="feedback" class="feedback error" role="alert" aria-live="polite" hidden></div>
+    <section class="screen is-active" id="inicio" aria-labelledby="inicio-title">
+      <div class="heading"><div><span class="eyebrow">Central de operações</span><h1 id="inicio-title">O que precisa da sua atenção?</h1><p>Recebimentos e pendências, sem procurar em menus técnicos.</p></div><button class="quiet refresh" data-refresh type="button">Atualizar</button></div>
+      <div id="home-content" aria-live="polite"><div class="loading">Carregando visão geral…</div></div>
+    </section>
+    <section class="screen" id="pedidos" aria-labelledby="pedidos-title" hidden>
+      <div class="heading"><div><span class="eyebrow">Acompanhamento</span><h1 id="pedidos-title">Pedidos</h1><p>Pagamento e entrega apresentados separadamente.</p></div><button class="quiet refresh" data-refresh type="button">Atualizar</button></div>
+      <label class="search-label" for="order-search">Buscar pedido</label>
+      <input type="search" id="order-search" placeholder="Nome, e-mail, produto ou pedido" autocomplete="off">
+      <div class="filters" role="group" aria-label="Filtrar pedidos">
+        <button class="chip selected" type="button" data-filter="todos" aria-pressed="true">Todos</button>
+        <button class="chip" type="button" data-filter="pendentes" aria-pressed="false">Aguardando</button>
+        <button class="chip" type="button" data-filter="pagos" aria-pressed="false">Pagos</button>
+        <button class="chip" type="button" data-filter="atencao" aria-pressed="false">Atenção</button>
+      </div>
+      <div class="results-note" id="orders-count"></div><div id="orders-list" aria-live="polite"><div class="loading">Carregando pedidos…</div></div>
+    </section>
+    <section class="screen" id="ofertas" aria-labelledby="ofertas-title" hidden>
+      <div class="heading"><div><span class="eyebrow">Seu catálogo</span><h1 id="ofertas-title">Ofertas</h1><p>Prepare, revise e só publique quando estiver pronto.</p></div><button id="new-offer" class="primary" type="button">+ Nova oferta</button></div>
+      <div id="offers-info"></div><div id="offers-list" aria-live="polite"><div class="loading">Carregando catálogo…</div></div>
+      <div class="section-heading"><h2>Cupons de desconto</h2><button class="quiet" id="new-coupon" type="button">Novo cupom</button></div>
+      <div id="coupons-list" aria-live="polite"></div>
+    </section>
+    <section class="screen" id="mais" aria-labelledby="mais-title" hidden>
+      <div class="heading"><div><span class="eyebrow">Conexões e suporte</span><h1 id="mais-title">Mais</h1><p>Diagnósticos, webhooks, entregas e segurança.</p></div><button class="quiet refresh" data-refresh type="button">Atualizar</button></div>
+      <div id="integrations-content" class="stack"><div class="loading">Carregando integrações…</div></div>
+      <div class="section-heading"><h2>Eventos do Asaas</h2></div><div id="events-content" class="stack"></div>
+      <div class="section-heading"><h2>Fila de entregas</h2></div><div id="fulfillments-content" class="stack"></div>
+    </section>
+  </div>
+</main>
+<div class="modal-backdrop" id="modal-backdrop" hidden>
+  <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-description">
+    <div class="modal-top"><h2 id="modal-title">Detalhes</h2><button class="icon-button" id="close-modal" type="button" aria-label="Fechar">×</button></div>
+    <p class="sr-only" id="modal-description">Janela de operação administrativa.</p>
+    <div id="modal-content"></div>
+  </section>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/assets/admin.js"></script>
+</body></html>
