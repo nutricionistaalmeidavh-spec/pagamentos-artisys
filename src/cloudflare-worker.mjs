@@ -2,6 +2,7 @@ import {createCheckout,verifyCheckoutPayment,verifyPaymentEvent} from './asaas.m
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
+import {verifyReleaseGithubOidc} from './github-oidc.mjs';
 
 const schema=[
   "CREATE TABLE IF NOT EXISTS offers(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',price_cents INTEGER NOT NULL CHECK(price_cents>0),currency TEXT NOT NULL DEFAULT 'BRL',sale_type TEXT NOT NULL DEFAULT 'one_time',delivery_mode TEXT NOT NULL DEFAULT 'manual',artifact_name TEXT,active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
@@ -306,8 +307,11 @@ async function process(request,env,ctx){
   return send({received:true});
  }
  if(path.startsWith('/v1/admin/')){
-  await admin(request,env);
-  if(path==='/v1/admin/system-releases'||path.startsWith('/v1/admin/system-releases/'))return systemReleaseAdmin(request,env);
+  const releaseRoute=path==='/v1/admin/system-releases'||path.startsWith('/v1/admin/system-releases/');
+  // OIDC grants ONLY the release-binary API; all other admin paths require ADMIN_TOKEN.
+  const githubVerified=releaseRoute&&await verifyReleaseGithubOidc(request,fetch);
+  if(!githubVerified)await admin(request,env);
+  if(releaseRoute)return systemReleaseAdmin(request,env,{githubVerified});
   if(method==='GET'&&path==='/v1/admin/asaas/diagnostic')return send(await diagnoseAsaas(env,fetch));
   if(method==='GET'&&path==='/v1/admin/summary'){
    const summary=await one(d,"SELECT count(*) AS orders,coalesce(sum(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) AS receivedCents,sum(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN status='refunded' THEN 1 ELSE 0 END) AS refunded FROM orders");
