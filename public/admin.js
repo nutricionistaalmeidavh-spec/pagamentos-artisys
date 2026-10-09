@@ -65,8 +65,8 @@ async function load(name=screen){
    offers=a.offers||[];coupons=c.coupons||[];health=h;integrations=s.integrations||[];catalogStatus=cat;renderOffers();
   }else if(name==='mais'){
    for(const id of ['integrations-content','events-content','fulfillments-content'])el(id).innerHTML='<div class="loading">Atualizando…</div>';
-   const [s,h,e,f]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments')]);
-   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();
+   const [s,h,e,f,releases]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments'),api('system-releases')]);
+   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();renderReleases(releases);
   }
   el('runtime-indicator').textContent=paymentsOnline()?'Cobranças habilitadas':'Cobranças desativadas';el('runtime-indicator').hidden=false;
  }catch(e){if(e.status===401){sessionStorage.removeItem(key);token='';signedIn(false);el('login-error').textContent='Sua sessão expirou. Entre novamente.';}else{showError(e,'Falha ao carregar');const id={inicio:'home-content',pedidos:'orders-list',ofertas:'offers-list',mais:'integrations-content'}[name];if(id)el(id).innerHTML=empty('Não foi possível carregar','Tente novamente usando Atualizar.');}}
@@ -94,6 +94,69 @@ function renderOrders(){
 }
 const saleName=s=>({one_time:'Pagamento único',monthly:'Assinatura mensal',yearly:'Assinatura anual'}[s]||s);
 const deliveryName=s=>({manual:'Manual',download:'Download protegido',webhook:'Conector automático'}[s]||s);
+
+const releaseNames={
+ 'obra-na-mao':'Obra na Mão',
+ 'pdv-artisys-restaurantes':'PDV ArtiSys (Bares e Restaurantes)',
+ 'pdv-nexus':'PDV Nexus',
+ 'artisys-sistema-financeiro':'ArtiSys Sistema Financeiro'
+};
+let availableReleases=[],uploadingRelease=false,selectedRelease=null;
+function renderReleases(data){
+ availableReleases=data.items||[];
+ const grouped=Object.entries(releaseNames).map(([offerId,title])=>{
+  const items=availableReleases.filter(x=>x.offerId===offerId);
+  const cards=items.map(x=>{
+   const status=x.outdated?label(['Versão antiga','warn']):x.stored?label(['No R2','ok']):x.error?label(['Verificação falhou','error']):label(['Pendente','warn']);
+   const size=(x.expectedSize/1024/1024).toFixed(1).replace('.',',')+' MB';
+   const link='<a href="'+esc(x.sourceUrl)+'" target="_blank" rel="noopener noreferrer">Abrir arquivo no Drive</a>';
+   const action=!x.outdated&&!x.stored?'<button type="button" class="secondary" data-release-upload="'+esc(x.id)+'">Selecionar arquivo e enviar ao R2</button>':'';
+   const reason=x.outdated?'<p class="muted">Não entregar esta versão: o desktop no GitHub já é 2.1.0; este instalador é 1.0.19.</p>':'';
+   return '<div class="release-row"><div class="card-top"><div><strong>'+esc(x.platform)+'</strong><div class="small">'+esc(x.version)+' · '+size+'</div></div>'+status+'</div><div class="small">'+esc(x.expectedName)+'</div>'+reason+'<div class="card-bottom"><span class="small">'+link+'</span>'+action+'</div></div>';
+  }).join('');
+  return '<section class="surface ops-card"><h3>'+esc(title)+'</h3>'+cards+'</section>';
+ });
+ const elContent=el('releases-content');
+ if(elContent)elContent.innerHTML='<div class="notice"><span>'+icon('shield')+'</span><div><strong>Transferência privada</strong><p>'+esc(data.approvedCount)+' de '+esc(data.total)+' variantes verificadas no R2. Selecionar arquivo não publica ofertas nem ativa checkout.</p></div></div>'+grouped.join('');
+}
+async function uploadRelease(file,item){
+ const partSize=8*1024*1024,status=el('releases-status');
+ if(item.outdated)throw Error('Instalador antigo bloqueado para venda.');
+ if(file.size!==item.expectedSize)throw Error('Arquivo com tamanho diferente do Drive ('+item.expectedSize+' bytes). Verifique se escolheu o instalador correto.');
+ if(uploadingRelease)return;
+ uploadingRelease=true;
+ const controls=el('releases-content').querySelectorAll('button');controls.forEach(n=>n.disabled=true);
+ let uploadId=null;
+ try{
+  status.textContent='Iniciando envio protegido ao R2: '+item.platform+'…';
+  const started=await api('system-releases/'+encodeURIComponent(item.id)+'/start','POST',{expectedSize:file.size});
+  uploadId=started.uploadId;
+  if(started.partSize!==partSize)throw Error('Tamanho de bloco inesperado');
+  const parts=[];
+  for(let n=1;n<=started.partCount;n++){
+   const start=(n-1)*partSize,end=Math.min(start+partSize,file.size);
+   status.textContent='Enviando '+item.platform+' — '+Math.floor(start/file.size*100)+'% ('+n+'/'+started.partCount+')';
+   const response=await fetch('/v1/admin/system-releases/'+encodeURIComponent(item.id)+'/part/'+n+'?uploadId='+encodeURIComponent(uploadId),{method:'PUT',headers:{authorization:'Bearer '+token,'content-type':'application/octet-stream'},body:file.slice(start,end)});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(data.error||'Falha ao enviar parte '+n);
+   parts.push({partNumber:data.partNumber,etag:data.etag});
+  }
+  status.textContent='Concluindo upload e verificando integridade…';
+  const complete=await api('system-releases/'+encodeURIComponent(item.id)+'/complete','POST',{uploadId,parts});
+  if(!complete.stored)throw Error('Upload não confirmado pelo R2');
+  toast('Arquivo transferido ao R2 privado. Oferta continua rascunho.');
+  status.textContent='R2 confirmou '+item.platform+' ('+file.size+' bytes).';
+  uploadId=null;
+ }catch(e){
+  if(uploadId){try{await api('system-releases/'+encodeURIComponent(item.id)+'/abort','POST',{uploadId});}catch{}}
+  status.textContent='Envio interrompido: '+translateError(e);
+  showError(e,'Instalador');
+ }finally{
+  uploadingRelease=false;controls.forEach(n=>n.disabled=false);
+  try{const r=await api('system-releases');renderReleases(r);}catch{}
+ }
+}
+
 
 function importCatalog(){
  const status=catalogStatus||{},missing=Number(status.missing||0);
@@ -295,6 +358,7 @@ document.addEventListener('click',e=>{
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}
  if(button.dataset.unpublish!==undefined){changePublication(button.dataset.unpublish,false);return;}
  if(button.id==='diagnose-asaas'){checkAsaas(button);return;}
+ if(button.dataset.releaseUpload){const item=availableReleases.find(x=>x.id===button.dataset.releaseUpload);if(item){selectedRelease=item;el('release-file-input').value='';el('release-file-input').click();}return;}
  if(button.id==='new-coupon'){openCoupon();return;}
  if(button.hasAttribute('data-close')){closeModal();return;}
  if(button.hasAttribute('data-wizard-back')){step=Math.max(1,step-1);renderWizard();return;}
@@ -311,6 +375,7 @@ document.addEventListener('click',e=>{
  }
 });
 el('order-search').addEventListener('input',renderOrders);
+el('release-file-input').addEventListener('change',async e=>{const file=e.target.files?.[0],item=selectedRelease;if(file&&item)await uploadRelease(file,item);});
 el('modal-backdrop').addEventListener('click',e=>{if(e.target===el('modal-backdrop'))closeModal();});
 el('close-modal').addEventListener('click',closeModal);
 document.addEventListener('keydown',e=>{
