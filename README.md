@@ -6,12 +6,12 @@ Central financeira independente para venda dos sistemas ArtiSys. **Hospedagem ca
 
 1. Acompanhar a `main` do repositório (as mudanças passam por PR com testes antes do merge).
 2. No Cloudflare: Workers & Pages → Create application → Import a repository → GitHub → nutricionistaalmeidavh-spec/pagamentos-artisys.
-3. Nome do Worker: **pagamento-artisys-central** (igual ao wrangler.jsonc). Branch de produção: **main**. Diretório raiz: /.
+3. Nome do Worker: **pagamentos-artisys-central** (igual ao wrangler.jsonc). Branch de produção: **main**. Diretório raiz: /.
 4. Build command: **npm run check**. Deploy command: **npx wrangler deploy**.
 5. Confirmar que o Worker dispõe dos bindings D1 **PAGAMENTO_ARTISYS_DB** e R2 **PAGAMENTO_ARTISYS_ARQUIVOS**. O D1 será identificado como **pagamento-artisys-central-db**. O R2 usa provisionamento automático beta, com nome gerado pelo Wrangler a partir do Worker; caso não esteja disponível, veja docs/CLOUDFLARE.md para adicionar os recursos e identificadores reais.
 6. Configurar em Worker → Settings → Variables & Secrets: ADMIN_TOKEN (segredo aleatório de no mínimo 32 caracteres), PUBLIC_BASE_URL (HTTPS definitivo) e PUBLIC_ORIGINS (domínio do site).
 7. Quando estiver pronto para conectar Asaas, configurar ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e ASAAS_API_BASE_URL exclusivos. Habilitar o checkout somente ao adicionar PAYMENTS_ENABLED=true ao runtime.
-8. Opcionalmente vincular pagamentos.artisys.dev pelo painel Domains & Routes; até lá usar a URL workers.dev gerada na implantação.
+8. Worker publicado: https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev. Opcionalmente vincular pagamentos.artisys.dev em Domains & Routes.
 
 O Worker cria D1 apenas com CREATE TABLE/INDEX IF NOT EXISTS; checkout Asaas permanece **desativado** enquanto PAYMENTS_ENABLED não for true. Sem D1 responde 503 em vez de simular disponibilidade. O cron pertence somente ao Worker **pagamento-artisys-central**, com agendamento a cada cinco minutos; não cria um cron global com nome compartilhado.
 

@@ -4,7 +4,7 @@
 
 Cloudflare Dashboard → Workers & Pages → Create application → Import a repository. Conecte a conta GitHub, selecione nutricionistaalmeidavh-spec/pagamentos-artisys e configure:
 
-- **Worker:** pagamento-artisys-central, mesmo nome do wrangler.jsonc.
+- **Worker:** pagamentos-artisys-central, mesmo nome do wrangler.jsonc.
 - **Production branch:** main.
 - **Root directory:** / ou vazio.
 - **Build command:** npm run check.
@@ -39,11 +39,11 @@ O Worker não define PAYMENTS_ENABLED no repositório. Portanto, cobranças Asaa
 
 ## Ativar e verificar
 
-1. Após o deploy, abra a URL workers.dev fornecida pelo Cloudflare. O deploy publica código, painel, rotas e cron. Se os bindings D1/R2 forem provisionados automaticamente, os recursos também estarão conectados. Não publica ofertas, secrets ou domínio próprio de forma automática.
+1. Worker criado no painel: https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev. Confirme que `/healthz` retorna JSON com `ok:true` e `storage:cloudflare-d1`. O deploy publica código, painel, rotas e cron. Se os bindings D1/R2 forem provisionados automaticamente, os recursos também estarão conectados. Não publica ofertas, secrets ou domínio próprio de forma automática.
 2. GET /healthz deve retornar ok true, storage cloudflare-d1 e paymentsEnabled false.
 3. /admin deve abrir, exigindo ADMIN_TOKEN para carregar os dados.
 4. Conecte opcionalmente pagamentos.artisys.dev em Settings → Domains & Routes, se sua zona DNS estiver na Cloudflare.
-5. Configure no Asaas um webhook HTTPS para https://SEU_DOMINIO/v1/webhooks/asaas, com o mesmo token salvo em ASAAS_WEBHOOK_TOKEN.
+5. Configure no Asaas um webhook HTTPS para `https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/v1/webhooks/asaas`, com o mesmo token salvo em ASAAS_WEBHOOK_TOKEN. O endpoint existe, mas só aceita o webhook depois do token ser configurado no Worker; não exponha segredos em GitHub.
 6. Confira o registro do evento, reconciliação e pagamento autorizado em ambiente controlado.
 7. Depois da homologação da **infraestrutura central**, ative PAYMENTS_ENABLED=true e publique a oferta do produto.
 8. Próximos aplicativos não precisam de sandbox de pagamentos repetido; devem testar somente contratos de preço e de entrega.
