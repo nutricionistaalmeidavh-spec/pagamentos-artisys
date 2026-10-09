@@ -44,6 +44,25 @@ const one=async(db,sql,...args)=>query(db,sql,...args).first();
 const rows=async(db,sql,...args)=>(await query(db,sql,...args).all()).results||[];
 const exec=async(db,sql,...args)=>query(db,sql,...args).run();
 async function audit(db,kind,subject,details){await exec(db,"INSERT INTO audit_logs(id,kind,subject_id,details,created_at) VALUES(?,?,?,?,?)",uuid(),kind,subject,JSON.stringify(details),now());}
+
+const CATALOG_SOURCE='devkittools-sistemas-2026-10-09';
+async function insertMissingCatalogDrafts(db){
+ // Falha fechada: esta operação nunca publica ou atualiza um registro existente.
+ if(CATALOG_DRAFTS.length!==67||CATALOG_DRAFTS.some(x=>x.active!==false))throw Error('catalog_draft_invalid');
+ const stamp=now();
+ const statements=CATALOG_DRAFTS.map(v=>db.prepare("INSERT OR IGNORE INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?)").bind(v.id,v.productId,v.name,v.description,v.priceCents,v.saleType,v.deliveryMode,v.artifactName||null,0,stamp,stamp));
+ const result=await db.batch(statements);
+ const created=result.reduce((sum,item)=>sum+Number(item?.meta?.changes||0),0);
+ return {expected:CATALOG_DRAFTS.length,created,alreadyExisting:CATALOG_DRAFTS.length-created,active:false};
+}
+async function initialCatalogImport(env){
+ const db=env.PAGAMENTO_ARTISYS_DB;
+ const done=await one(db,"SELECT id FROM audit_logs WHERE kind='catalog_seed_completed' AND subject_id=? LIMIT 1",CATALOG_SOURCE);
+ if(done)return;
+ const result=await insertMissingCatalogDrafts(db);
+ await audit(db,'catalog_seed_completed',CATALOG_SOURCE,result);
+}
+
 async function admin(request,env){
  if(!env.ADMIN_TOKEN||env.ADMIN_TOKEN.length<32)throw fail('admin_not_configured',503);
  if(!await safeEqual(headerToken(request),env.ADMIN_TOKEN))throw fail('unauthorized',401);
@@ -301,15 +320,9 @@ async function process(request,env,ctx){
    return send({expected:CATALOG_DRAFTS.length,present:existing.length,missing:ids.filter(id=>!dbById.has(id)).length,published:existing.filter(x=>x.active===1).length,changed:CATALOG_DRAFTS.filter(x=>{const old=dbById.get(x.id);return old&&(old.price_cents!==x.priceCents||old.product_id!==x.productId);}).length});
   }
   if(method==='POST'&&path==='/v1/admin/catalog-drafts/import'){
-   // Importação aditiva: preserva ofertas já existentes, inclusive preços e status.
-   const count=CATALOG_DRAFTS.length;
-   if(count!==67||CATALOG_DRAFTS.some(x=>x.active!==false))throw fail('catalog_draft_invalid',503);
-   const stamp=now();
-   const statements=CATALOG_DRAFTS.map(v=>d.prepare("INSERT OR IGNORE INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?)").bind(v.id,v.productId,v.name,v.description,v.priceCents,v.saleType,v.deliveryMode,v.artifactName||null,0,stamp,stamp));
-   const result=await d.batch(statements);
-   const created=result.reduce((sum,item)=>sum+Number(item?.meta?.changes||0),0);
-   await audit(d,'catalog_draft_import','devkittools-2026-10-09',{expected:count,created,alreadyExisting:count-created});
-   return send({expected:count,created,alreadyExisting:count-created,active:false});
+   const result=await insertMissingCatalogDrafts(d);
+   await audit(d,'catalog_draft_import',CATALOG_SOURCE,result);
+   return send(result);
   }
 
   if(method==='POST'&&path==='/v1/admin/offers'){
@@ -366,5 +379,6 @@ export default {
  },
  async scheduled(event,env,ctx){
   ctx.waitUntil((async()=>{await initialize(env);await reconcilePending(env);await queueWorker(env);})().catch(e=>console.error('scheduled_error',String(e.message).slice(0,120))));
+  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
  }
 };
