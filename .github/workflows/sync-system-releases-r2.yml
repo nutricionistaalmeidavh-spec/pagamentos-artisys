@@ -40,7 +40,6 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' && vars.ARTISYS_RELEASE_SYNC_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    environment: artisys-releases
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
