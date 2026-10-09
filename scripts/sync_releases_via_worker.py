@@ -75,7 +75,8 @@ class OidcClient:
         last_error = None
         for attempt in range(attempts):
             token = self.github_token(force=attempt > 0 and isinstance(last_error, urllib.error.HTTPError) and last_error.code == 401)
-            headers = {"Authorization": "Bearer " + token, "Accept": "application/json"}
+            headers = {"Authorization": "Bearer " + token, "Accept": "application/json",
+                       "User-Agent": "ArtiSys-Github-OIDC-R2/1.0"}
             if payload is not None:
                 headers["Content-Type"] = "application/json" if json_body else "application/octet-stream"
                 body = json.dumps(payload).encode() if json_body else payload
@@ -108,7 +109,9 @@ class OidcClient:
         deadline = time.monotonic() + timeout_seconds
         while True:
             try:
-                with urllib.request.urlopen(self.root + "/healthz", timeout=15) as response:
+                health_req = urllib.request.Request(self.root + "/healthz",
+                    headers={"User-Agent": "ArtiSys-Github-OIDC-R2/1.0", "Accept":"application/json"})
+                with urllib.request.urlopen(health_req, timeout=15) as response:
                     health = json.load(response)
                 if health.get("releaseSyncAuth") == "github-oidc-v1":
                     # Now a 401 indicates a real auth error, NOT deployment race.
@@ -116,10 +119,19 @@ class OidcClient:
                 if time.monotonic() + 15 >= deadline:
                     raise SyncError("Deploy do Worker não publicou o endpoint OIDC")
                 print("Aguardando deploy do Worker (healthz ainda sem github-oidc-v1)...", flush=True)
-            except urllib.error.URLError as exc:
+            except urllib.error.HTTPError as exc:
+                # Authentication/WAF rejections are not propagation delays.
+                if exc.code in (401, 403, 404):
+                    raise SyncError(f"Worker /healthz recusou o runner (HTTP {exc.code})") from None
                 if time.monotonic() + 15 >= deadline:
-                    raise SyncError("Worker indisponível no prazo de espera") from exc
-                print("Aguardando Worker ficar disponível...",flush=True)
+                    raise SyncError(f"Worker /healthz erro HTTP {exc.code} por tempo demais") from None
+                print(f"Worker /healthz HTTP {exc.code}; repetindo...",flush=True)
+            except urllib.error.URLError as exc:
+                # Never print URLs containing JWTs (none are used for healthz).
+                message = type(exc.reason).__name__ if getattr(exc,'reason',None) is not None else type(exc).__name__
+                if time.monotonic() + 15 >= deadline:
+                    raise SyncError("Worker indisponível por problema de conexão: "+message) from None
+                print("Worker ainda inacessível pelo runner: "+message,flush=True)
             time.sleep(15)
 
 
