@@ -60,10 +60,9 @@ jobs:
         shell: bash
         env:
           ARTISYS_R2_CONFIG_JSON: ${{ secrets.ARTISYS_R2_CONFIG_JSON }}
-          ARTISYS_GDRIVE_OAUTH_JSON: ${{ secrets.ARTISYS_GDRIVE_OAUTH_JSON }}
           ARTISYS_SOURCE_GITHUB_TOKEN: ${{ secrets.ARTISYS_SOURCE_GITHUB_TOKEN }}
         run: |
-          for secret in ARTISYS_R2_CONFIG_JSON ARTISYS_GDRIVE_OAUTH_JSON ARTISYS_SOURCE_GITHUB_TOKEN; do
+          for secret in ARTISYS_R2_CONFIG_JSON ARTISYS_SOURCE_GITHUB_TOKEN; do
             if [ -z "${!secret}" ]; then
               echo "::error::Secret $secret ausente. Configure em Settings → Secrets and variables → Actions."
               exit 1
@@ -72,6 +71,5 @@ jobs:
       - name: Baixar, checar SHA-256 e importar os oito arquivos
         env:
           ARTISYS_R2_CONFIG_JSON: ${{ secrets.ARTISYS_R2_CONFIG_JSON }}
-          ARTISYS_GDRIVE_OAUTH_JSON: ${{ secrets.ARTISYS_GDRIVE_OAUTH_JSON }}
           ARTISYS_SOURCE_GITHUB_TOKEN: ${{ secrets.ARTISYS_SOURCE_GITHUB_TOKEN }}
         run: python scripts/sync_system_releases.py
