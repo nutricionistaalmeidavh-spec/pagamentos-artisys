@@ -49,7 +49,7 @@ Para delivery_mode=download, registre artifactName no painel e armazene o arquiv
 
 ## Autenticação e proteção
 
-ADMIN_TOKEN deve ser restrito a administradores. Restringir /admin por VPN, autenticação no proxy ou firewall é recomendado. O comprador recebe um token de pedido; ele também autoriza consultas aos pedidos daquele e-mail, por isso não o exponha em URLs ou logs públicos.
+ADMIN_TOKEN deve ser restrito a administradores. Restringir /admin por VPN, autenticação no proxy ou firewall é recomendado. O comprador recebe um token exclusivo do pedido. Ele autoriza somente a consulta daquele pedido; não permite consultar outros pedidos do mesmo e-mail sem autenticação adicional. Não o exponha em URLs ou logs públicos.
 
 PUBLIC_ORIGINS configura CORS para o domínio do site. CORS não substitui antifraude ou rate limiting de API. Use reverse proxy com TLS, limite de requisições e registros redigidos. Evite que conexão de produto aponte para endereço fora de CONNECTOR_ALLOWED_ORIGINS.
 

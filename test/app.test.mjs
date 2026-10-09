@@ -143,3 +143,16 @@ test('download local exige pedido pago e rejeita link simbólico',async()=>{
     assert.equal((await t.call('/v1/orders/'+bx,'GET',null,bkey)).data.order.fulfillmentStatus,'waiting_configuration');
   }finally{await t.dispose();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('token de um pedido não concede acesso aos outros pedidos do mesmo e-mail',async()=>{
+  const t=await setup();try{
+    await t.offer();
+    const first=await t.order('victim-checkout-00001','victim@example.test');
+    const second=await t.order('victim-checkout-00002','victim@example.test');
+    const results=await t.call('/v1/customer/purchases','GET',null,second.data.orderAccessToken);
+    assert.equal(results.status,200);
+    assert.equal(results.data.purchases.length,1);
+    assert.equal(results.data.purchases[0].id,second.data.order.id);
+    assert.notEqual(results.data.purchases[0].id,first.data.order.id);
+  }finally{await t.dispose();}
+});

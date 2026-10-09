@@ -265,8 +265,9 @@ export function createApp(options={}) {
       if(method==='GET'&&path==='/v1/customer/purchases'){
         const found=get('SELECT * FROM orders WHERE access_hash=?',hash(auth(req)));
         if(!found)throw error('unauthorized',401);
-        const purchases=all('SELECT * FROM orders WHERE customer_email=? ORDER BY created_at DESC LIMIT 100',found.customer_email);
-        return json(res,200,{purchases:purchases.map(publicOrder)});
+        // Um token emitido para um pedido não comprova titularidade do e-mail.
+        // Não permitir enumeração de compras antigas sem verificação de identidade.
+        return json(res,200,{purchases:[publicOrder(found)]});
       }
       if(method==='POST'&&path==='/v1/webhooks/asaas'){
         if(!env.ASAAS_WEBHOOK_TOKEN||env.ASAAS_WEBHOOK_TOKEN.length<32)throw error('webhook_not_configured',503);

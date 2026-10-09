@@ -12,7 +12,7 @@ Sistema financeiro independente para vender softwares e serviços ArtiSys direta
 | P1 | Adaptador Checkout Asaas opcional, Pix manual alternativo, compra avulsa e estrutura recorrente |
 | P2 | Webhook autenticado, persistência antes do HTTP 200, deduplicação, fila de tentativas, replay e reconciliação |
 | P3 | Entrega manual, download local protegido e conectores de produto HMAC por origem permitida |
-| P4 | Dashboard, ofertas, pedidos, cupons, eventos, entregas, tela de checkout, área de pedido e contrato OpenAPI |
+| P4 | Dashboard, ofertas, pedidos, cupons, eventos, entregas, tela de checkout, consulta protegida do pedido e contrato OpenAPI |
 
 ## Execução local (núcleo R$0)
 
