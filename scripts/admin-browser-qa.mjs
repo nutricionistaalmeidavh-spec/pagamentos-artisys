@@ -72,6 +72,10 @@ try{
  assert.equal(created.price_cents,4250);
  await page.locator('[data-screen=mais]').click();
  await page.getByRole('heading',{name:'Mais'}).waitFor();
+ await page.getByRole('button',{name:'Verificar agora'}).click();
+ await page.locator('#asaas-diagnostic').getByText('Chave ausente (', {exact:false}).count().catch(()=>0);
+ await page.locator('#asaas-diagnostic').getByText('Chave ausente', {exact:false}).waitFor();
+ assert.match(await page.locator('#asaas-diagnostic').innerText(),/não homologados|não homologado/i);
  await page.screenshot({path:'qa-shots/04-mais-iphone.png',fullPage:true});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),'Rolagem horizontal no celular');
  await page.setViewportSize({width:1280,height:800});
