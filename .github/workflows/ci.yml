@@ -22,7 +22,7 @@ jobs:
         run: npm run check
       - name: Testes do pipeline seguro R2
         run: python3 -m unittest discover -s test -p 'test_*sync.py'
-      - name: Validar manifesto GitHub/Drive (sem segredos)
+      - name: Validar manifesto GitHub (sem segredos)
         run: |
           mkdir -p .release-sync
           node scripts/export-release-manifest.mjs > .release-sync/manifest.json
