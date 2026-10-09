@@ -10,7 +10,8 @@ def entry():
     data=b'ABC test de integridade'
     return data, {
         'id':'unit-1','offerId':'obra-na-mao','fileName':'unit.exe',
-        'key':'releases/unit.exe','source':'google-drive','driveId':'1234567890ABCDEFG',
+        'key':'releases/unit.exe','source':'github-release','sourceRepo':'nutricionistaalmeidavh-spec/OBRANAMAOCOMERCIAL',
+        'sourceUrl':'https://github.com/nutricionistaalmeidavh-spec/OBRANAMAOCOMERCIAL/releases/download/v0.1.0/unit.exe',
         'size':len(data),'sha256':hashlib.sha256(data).hexdigest()
     }
 

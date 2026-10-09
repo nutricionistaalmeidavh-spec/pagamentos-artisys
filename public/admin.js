@@ -109,7 +109,7 @@ function renderReleases(data){
   const cards=items.map(x=>{
    const status=x.outdated?label(['Versão antiga','warn']):x.verified?label(['R2 · SHA conferido','ok']):x.stored?label(['No R2 · SHA pendente','warn']):x.error?label(['Verificação falhou','error']):label(['Pendente','warn']);
    const size=(x.expectedSize/1024/1024).toFixed(1).replace('.',',')+' MB';
-   const link='<a href="'+esc(x.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+(x.source==='github-actions'?'Ver build aprovado no GitHub':'Abrir arquivo no Drive')+'</a>';
+   const link='<a href="'+esc(x.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+(x.source==='github-actions'?'Ver build aprovado no GitHub':'Ver release no GitHub')+'</a>';
    const action=!x.outdated&&!x.stored?'<button type="button" class="secondary" data-release-upload="'+esc(x.id)+'">Selecionar arquivo e enviar ao R2</button>':'';
    const reason=x.outdated?'<p class="muted">Esta versão está desatualizada e bloqueada para entrega.</p>':x.source==='github-actions'?'<p class="muted">Instalador extraído do GitHub Actions aprovado, commit '+esc(x.sourceCommit||'ver link')+'. Selecione o executável extraído do ZIP, não o arquivo ZIP do Actions.</p>':'';
    return '<div class="release-row"><div class="card-top"><div><strong>'+esc(x.platform)+'</strong><div class="small">'+esc(x.version)+' · '+size+'</div></div>'+status+'</div><div class="small">'+esc(x.expectedName)+'</div>'+reason+'<div class="card-bottom"><span class="small">'+link+'</span>'+action+'</div></div>';

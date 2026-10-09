@@ -57,8 +57,8 @@ async function status(env){
   }
   return {id:item.id,offerId:item.offerId,platform:item.platform,version:item.version,
     expectedName:item.fileName,expectedSize:item.size,outdated:item.outdated,stored,verified,
-    bytes,error,sourceUrl:item.sourceUrl||'https://drive.google.com/file/d/'+item.driveId+'/view',
-    source:item.source||'google-drive',sha256:item.sha256||null,sourceCommit:item.sourceCommit||null,
+    bytes,error,sourceUrl:item.sourceUrl,sourceRepo:item.sourceRepo,
+    source:item.source,sha256:item.sha256||null,sourceCommit:item.sourceCommit||null,
     deliverable:verified&&!item.outdated};
  }));
  return response({storageConfigured:!!r2,items:entries,approvedCount:entries.filter(x=>x.deliverable).length,total:entries.length});
@@ -78,7 +78,7 @@ export async function systemReleaseAdmin(request,env){
   if(existing)throw fail('release_already_present',409);
   const upload=await r2.createMultipartUpload(item.key,{
    httpMetadata:{contentType:'application/octet-stream'},
-   customMetadata:{offerId:item.offerId,variantId:item.id,origin:item.source||'google-drive'}
+   customMetadata:{offerId:item.offerId,variantId:item.id,origin:item.source}
   });
   return response({uploadId:upload.uploadId,partSize:RELEASE_PART_SIZE,partCount:partCount(item),expectedSize:item.size},201);
  }

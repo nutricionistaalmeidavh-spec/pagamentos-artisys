@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sincroniza os oito binários canônicos Drive/GitHub Actions -> R2 privado.
+"""Sincroniza os oito instaladores GitHub Releases/Actions -> R2 privado.
 
 Não publica ofertas nem distribui downloads. Executa somente após configurar
 credenciais no GitHub Actions. Requer Python 3.12 + boto3 (somente modo upload).
@@ -20,8 +20,14 @@ import urllib.request
 import zipfile
 
 MANIFEST = pathlib.Path(".release-sync/manifest.json")
-GITHUB_REPO = "nutricionistaalmeidavh-spec/OBRANAMAOCOMERCIAL"
-MAX_DOWNLOAD = 200 * 1024 * 1024
+GITHUB_OWNER = "nutricionistaalmeidavh-spec"
+SOURCE_REPOS = {
+    "obra-na-mao": "OBRANAMAOCOMERCIAL",
+    "pdv-artisys-restaurantes": "PDV-ARTISYS",
+    "pdv-nexus": "PDVNexus",
+    "artisys-sistema-financeiro": "sistemafinanceiro",
+}
+MAX_DOWNLOAD = 350 * 1024 * 1024
 CHUNK = 1024 * 1024
 
 
@@ -80,15 +86,17 @@ def validate(manifest: dict) -> list[dict]:
             raise SyncError("SHA-256 inválido")
         if not isinstance(e["size"], int) or e["size"] <= 0 or e["size"] > MAX_DOWNLOAD:
             raise SyncError("Tamanho inválido")
-        if e["source"] == "google-drive":
-            if not re.fullmatch(r"[A-Za-z0-9_-]{15,}", e.get("driveId") or ""):
-                raise SyncError("ID Drive inválido")
-        elif e["source"] == "github-actions":
-            pattern = rf"https://github\.com/{GITHUB_REPO}/actions/runs/[0-9]+/artifacts/[0-9]+"
-            if not re.fullmatch(pattern, e.get("sourceUrl") or ""):
-                raise SyncError("Fonte GitHub incorreta")
+        expected_repo = f"{GITHUB_OWNER}/{SOURCE_REPOS.get(e['offerId'], '')}"
+        if e.get("sourceRepo") != expected_repo or expected_repo.endswith("/"):
+            raise SyncError("Repositório não corresponde ao produto")
+        if e["source"] == "github-actions":
+            pattern = rf"https://github\.com/{re.escape(expected_repo)}/actions/runs/[0-9]+/artifacts/[0-9]+"
+        elif e["source"] == "github-release":
+            pattern = rf"https://github\.com/{re.escape(expected_repo)}/releases/download/[A-Za-z0-9_.-]+/{re.escape(e['fileName'])}"
         else:
-            raise SyncError("Fonte de instalador não autorizada")
+            raise SyncError("Fonte deve ser uma release ou artifact do GitHub")
+        if not re.fullmatch(pattern, e.get("sourceUrl") or ""):
+            raise SyncError("URL de origem GitHub inválida")
     return entries
 
 
@@ -105,36 +113,16 @@ def download_stream(url: str, headers: dict, dest: pathlib.Path) -> None:
             out.write(part)
 
 
-def google_access_token(config: dict) -> str:
-    required = ("client_id", "client_secret", "refresh_token")
-    if not all(config.get(k) for k in required):
-        raise SyncError("ARTISYS_GDRIVE_OAUTH_JSON incompleto")
-    body = urllib.parse.urlencode({
-        "client_id": config["client_id"],
-        "client_secret": config["client_secret"],
-        "refresh_token": config["refresh_token"],
-        "grant_type": "refresh_token",
-    }).encode()
-    with request("https://oauth2.googleapis.com/token", {"Content-Type": "application/x-www-form-urlencoded"}, body) as incoming:
-        result = json.load(incoming)
-    if not result.get("access_token"):
-        raise SyncError("OAuth do Google Drive sem access_token")
-    return result["access_token"]
-
-
-def obtain(entry: dict, folder: pathlib.Path, drive_token: str | None, github_token: str | None) -> pathlib.Path:
+def obtain(entry: dict, folder: pathlib.Path, github_token: str | None) -> pathlib.Path:
     dest = folder / entry["fileName"]
-    if entry["source"] == "google-drive":
-        if not drive_token:
-            raise SyncError("Credencial Google Drive ausente")
-        file_id = urllib.parse.quote(entry["driveId"], safe="")
-        url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true"
-        download_stream(url, {"Authorization": f"Bearer {drive_token}"}, dest)
+    if entry["source"] == "github-release":
+        # Releases públicas: não dependem de OAuth do Drive nem de PAT.
+        download_stream(entry["sourceUrl"], {"User-Agent": "ArtiSys-Release-Sync"}, dest)
     else:
         if not github_token:
-            raise SyncError("ARTISYS_SOURCE_GITHUB_TOKEN ausente para artifact do outro repositório")
+            raise SyncError("ARTISYS_SOURCE_GITHUB_TOKEN ausente para o artifact GitHub Actions")
         artifact_id = entry["sourceUrl"].rsplit("/", 1)[-1]
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/artifacts/{artifact_id}/zip"
+        url = f"https://api.github.com/repos/{entry['sourceRepo']}/actions/artifacts/{artifact_id}/zip"
         zip_path = folder / "github-artifact.zip"
         download_stream(url, {
             "Authorization": f"Bearer {github_token}",
@@ -144,10 +132,10 @@ def obtain(entry: dict, folder: pathlib.Path, drive_token: str | None, github_to
         with zipfile.ZipFile(zip_path) as archive:
             names = [x for x in archive.infolist() if pathlib.PurePosixPath(x.filename).name == entry["fileName"] and not x.is_dir()]
             if len(names) != 1 or names[0].file_size != entry["size"]:
-                raise SyncError("Instalador esperado não localizado no artefato validado")
+                raise SyncError("Instalador esperado não localizado no artefato do GitHub")
             with archive.open(names[0]) as source, dest.open("wb") as out:
-                for chunk in iter(lambda: source.read(CHUNK), b""):
-                    out.write(chunk)
+                for piece in iter(lambda: source.read(CHUNK), b""):
+                    out.write(piece)
         zip_path.unlink()
     verified_hash(dest, entry)
     print(f"SHA-256 válido: {entry['id']} ({entry['size']} bytes)", flush=True)
@@ -202,20 +190,18 @@ def main():
         return
     try:
         r2_config = json.loads(os.environ["ARTISYS_R2_CONFIG_JSON"])
-        drive_config = json.loads(os.environ["ARTISYS_GDRIVE_OAUTH_JSON"])
     except (KeyError, ValueError) as exc:
-        raise SyncError("Configure ARTISYS_R2_CONFIG_JSON e ARTISYS_GDRIVE_OAUTH_JSON nos secrets GitHub") from exc
+        raise SyncError("Configure ARTISYS_R2_CONFIG_JSON nos secrets GitHub") from exc
     github_token = os.environ.get("ARTISYS_SOURCE_GITHUB_TOKEN", "")
     client, bucket, transfer = r2_client(r2_config)
     pending = [e for e in entries if not remote_matches(client, bucket, e)]
     if not pending:
         print("Todos os oito instaladores já estão íntegros no R2.")
         return
-    google_token = google_access_token(drive_config) if any(x["source"] == "google-drive" for x in pending) else None
     with tempfile.TemporaryDirectory(prefix="artisys-release-") as tmp:
         for item in pending:
             with tempfile.TemporaryDirectory(prefix="asset-", dir=tmp) as subdir:
-                file = obtain(item, pathlib.Path(subdir), google_token, github_token)
+                file = obtain(item, pathlib.Path(subdir), github_token)
                 client.upload_file(
                     str(file), bucket, item["key"],
                     ExtraArgs={"ContentType": "application/octet-stream",
