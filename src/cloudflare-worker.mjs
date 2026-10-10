@@ -359,6 +359,40 @@ async function process(request,env,ctx){
    return send({summary:{...summary,failedEvents:broken.count},integrations:Object.entries(connections).map(([productId,x])=>({productId,configured:!!(x?.url&&x?.secret)}))});
   }
   if(method==='GET'&&path==='/v1/admin/offers')return send({offers:await rows(d,'SELECT * FROM offers ORDER BY updated_at DESC LIMIT 200')});
+  if(method==='GET'&&path==='/v1/admin/offer-readiness'){
+   const all=await rows(d,'SELECT * FROM offers ORDER BY name');
+   const approved=new Set((await rows(d,'SELECT artifact_name FROM release_approvals')).map(x=>x.artifact_name));
+   const result=await Promise.all(all.map(async o=>({id:o.id,name:o.name,active:!!o.active,deliveryMode:o.delivery_mode,priceCents:o.price_cents,
+    ...(o.delivery_mode==='download'?await downloadReadiness(env,o,approved):{ready:false,reason:'delivery_not_download',variants:[]})})));
+   return send({offers:result,paymentsEnabled:env.PAYMENTS_ENABLED==='true',
+    asaasConfigured:!!(env.ASAAS_API_KEY&&env.ASAAS_WEBHOOK_TOKEN&&env.PUBLIC_BASE_URL),
+    manualPixConfigured:!!env.MANUAL_PIX_KEY,licensesApproved:approved.size});
+  }
+  if(method==='POST'&&path==='/v1/admin/prepare-download-offers'){
+   const results=[];
+   for(const [offerId] of SYSTEMS){
+    const first=defaultSystemVariant(offerId),artifact=first.key.slice('releases/'.length);
+    const changed=await exec(d,"UPDATE offers SET delivery_mode='download',artifact_name=?,updated_at=? WHERE id=? AND active=0 AND delivery_mode='manual' AND (artifact_name IS NULL OR artifact_name='')",artifact,now(),offerId);
+    results.push({id:offerId,updated:Number(changed.meta?.changes||0)});
+   }
+   await audit(d,'download_offers_prepared','four_systems',results);
+   return send({results,published:false,paymentsEnabled:env.PAYMENTS_ENABLED==='true'});
+  }
+  if(method==='POST'&&path==='/v1/admin/review-devkit-license'){
+   const data=isObj(await read(request)),file=String(data.artifactName||''),kit=KITS_BY_ARTIFACT.get(file);
+   if(!kit||kit.outdated)throw fail('kit_license_review_unavailable',409);
+   if(data.approved===true){
+    if(data.confirm!=='CONFIRMO LICENCAS E DOCUMENTACAO'||data.licensesChecked!==true||data.documentationChecked!==true)
+     throw fail('license_review_confirmation_required',400);
+    const verified=await verifyStoredRelease(env,kit);
+    if(!verified.verified)throw fail('artifact_not_verified',409);
+    await exec(d,"INSERT INTO release_approvals(artifact_name,approved_at,review_note) VALUES(?,?,?) ON CONFLICT(artifact_name) DO UPDATE SET approved_at=excluded.approved_at,review_note=excluded.review_note",file,now(),'revisao explicita do operador');
+   }else if(data.approved===false){
+    await exec(d,'DELETE FROM release_approvals WHERE artifact_name=?',file);
+   }else throw fail('invalid_approval_action');
+   await audit(d,'license_review',file,{approved:data.approved});
+   return send({artifactName:file,approved:data.approved,published:false});
+  }
 
   if(method==='GET'&&path==='/v1/admin/catalog-drafts/status'){
    const ids=CATALOG_DRAFTS.map(x=>x.id),existing=await rows(d,"SELECT id,active,price_cents,product_id FROM offers WHERE id IN ("+ids.map(()=>'?').join(',')+")",...ids);
@@ -374,6 +408,21 @@ async function process(request,env,ctx){
   if(method==='POST'&&path==='/v1/admin/offers'){
    const v=isObj(await read(request)),id=String(v.id||''),pid=String(v.productId||''),price=Number(v.priceCents),sale=String(v.saleType||'one_time'),delivery=String(v.deliveryMode||'manual'),artifact=v.artifactName||null;
    if(!validId(id)||!validId(pid)||!String(v.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw fail('invalid_offer');
+   if(v.active){
+    if(env.PAYMENTS_ENABLED!=='true')throw fail('payments_not_enabled',409);
+    if(!(env.MANUAL_PIX_KEY||(env.ASAAS_API_KEY&&env.ASAAS_WEBHOOK_TOKEN&&env.PUBLIC_BASE_URL)))
+     throw fail('payment_provider_not_configured',409);
+    if(delivery==='download'){
+     const offer={id,product_id:pid,delivery_mode:delivery,artifact_name:artifact,price_cents:price};
+     const approved=new Set((await rows(d,'SELECT artifact_name FROM release_approvals')).map(x=>x.artifact_name));
+     const checked=await downloadReadiness(env,offer,approved);
+     if(!checked.ready)throw fail(checked.reason||'download_not_ready',409);
+    }
+    if(delivery==='webhook'){
+     const target=connectorFor(env,pid);
+     if(!target.url||!target.secret)throw fail('connector_missing',409);
+    }
+   }
    await exec(d,"INSERT INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,price_cents=excluded.price_cents,sale_type=excluded.sale_type,delivery_mode=excluded.delivery_mode,artifact_name=excluded.artifact_name,active=excluded.active,updated_at=excluded.updated_at",
     id,pid,String(v.name).trim().slice(0,140),String(v.description||'').slice(0,500),price,sale,delivery,artifact,v.active?1:0,now(),now());
    return send({offer:await one(d,'SELECT * FROM offers WHERE id=?',id)});
@@ -388,9 +437,16 @@ async function process(request,env,ctx){
   if(method==='GET'&&path==='/v1/admin/orders')return send({orders:(await rows(d,'SELECT * FROM orders ORDER BY created_at DESC LIMIT 200')).map(x=>({...publicOrder(x),customerEmail:x.customer_email,customerName:x.customer_name}))});
   if(method==='GET'&&path==='/v1/admin/events')return send({events:await rows(d,'SELECT id,event_type,status,attempts,last_error,received_at,processed_at FROM provider_events ORDER BY received_at DESC LIMIT 200')});
   if(method==='GET'&&path==='/v1/admin/fulfillments')return send({fulfillments:await rows(d,'SELECT id,order_id,action,status,attempts,last_error,updated_at FROM fulfillments ORDER BY created_at DESC LIMIT 200')});
-  const action=path.match(/^\/v1\/admin\/orders\/([a-f0-9-]{36})\/(confirm-manual|deliver-manual|reconcile)$/);
+  const action=path.match(/^\/v1\/admin\/orders\/([a-f0-9-]{36})\/(confirm-manual|deliver-manual|reconcile|rotate-access)$/);
   if(method==='POST'&&action){
    const row=await one(d,'SELECT * FROM orders WHERE id=?',action[1]);if(!row)throw fail('order_not_found',404);
+   if(action[2]==='rotate-access'){
+    if(row.status!=='paid')throw fail('paid_order_required',409);
+    const fresh=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(v=>v.toString(16).padStart(2,'0')).join('');
+    await exec(d,'UPDATE orders SET access_hash=?,updated_at=? WHERE id=?',await digest(fresh),now(),row.id);
+    await audit(d,'customer_access_rotated',row.id,{operator:'admin',previousAccessRevoked:true});
+    return send({orderId:row.id,orderAccessToken:fresh,oneTimeDisplay:true});
+   }
    if(action[2]==='confirm-manual'){
     if(row.payment_provider!=='manual_pix'||row.status!=='pending')throw fail('manual_payment_not_pending',409);
     await markPaid(env,row,'manual_admin');ctx.waitUntil(queueWorker(env));return send({order:publicOrder(await one(d,'SELECT * FROM orders WHERE id=?',row.id))});
