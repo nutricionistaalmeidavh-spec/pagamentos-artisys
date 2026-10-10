@@ -5,7 +5,8 @@ export const REQUIRED_CHECKOUT_EVENTS=Object.freeze([
 ]);
 
 function safeProviderStatus(error){
- const match=/^asaas_http_([0-9]{3})$/.exec(String(error?.message||''));
+ const match=/^asaas_http_([0-9]{3})$/.exec(String(error?.message||'')) ||
+  (Number.isInteger(error?.httpStatus)?[null,String(error.httpStatus)]:null);
  if(match){
   const code=Number(match[1]);
   if(code===400)return 'bad_request';
