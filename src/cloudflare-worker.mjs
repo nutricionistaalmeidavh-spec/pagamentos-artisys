@@ -1,4 +1,4 @@
-import {createCheckout,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
+import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
@@ -160,10 +160,40 @@ async function deliver(env,job){
  if(job.action==='activate')await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='delivered' WHERE id=?",order.id);
  await audit(env.PAGAMENTO_ARTISYS_DB,'delivery_confirmed',order.id,{action:job.action});
 }
+// Recupera somente um checkout já recebido em webhook autenticado do Asaas.
+// Requer callback EXATO, valor, status e pedido corretos; nunca cria cobrança.
+async function recoverOrphanCheckoutFromEvent(env,checkout){
+ const callbacks=isObj(checkout.callback);
+ const url=String(callbacks.successUrl||'');
+ let orderId;
+ try{
+  const parsed=new URL(url),expected=new URL(env.PUBLIC_BASE_URL);
+  if(parsed.origin!==expected.origin||parsed.pathname!=='/pedido'||parsed.searchParams.size!==1)return null;
+  orderId=parsed.searchParams.get('id');
+ }catch{return null;}
+ if(!/^[a-f0-9-]{36}$/.test(String(orderId||'')))return null;
+ const expectedCallback=new URL('/pedido?id='+encodeURIComponent(orderId),env.PUBLIC_BASE_URL).href;
+ if(callbacks.successUrl!==expectedCallback||callbacks.cancelUrl!==expectedCallback||callbacks.expiredUrl!==expectedCallback)return null;
+ if(String(checkout.status)!=='ACTIVE'||!Array.isArray(checkout.items)||!checkout.items.length)return null;
+ const cents=checkout.items.reduce((sum,x)=>{
+  const q=Number(x.quantity),v=Number(x.value);
+  return Number.isSafeInteger(q)&&q>0&&Number.isFinite(v)&&v>0?sum+q*Math.round(v*100):NaN;
+ },0);
+ if(!Number.isSafeInteger(cents)||cents<1)return null;
+ const d=env.PAGAMENTO_ARTISYS_DB;
+ const row=await one(d,"SELECT * FROM orders WHERE id=? AND payment_provider='asaas' AND status='pending' AND checkout_state='verifying' AND checkout_id IS NULL AND checkout_url IS NULL",orderId);
+ if(!row||row.amount_cents!==cents)return null;
+ const checkoutId=String(checkout.id||''),link=checkoutUrlForId(env,checkoutId);
+ const changed=await exec(d,"UPDATE orders SET checkout_id=?,checkout_url=?,checkout_state='ready',updated_at=? WHERE id=? AND status='pending' AND payment_provider='asaas' AND checkout_state='verifying' AND checkout_id IS NULL AND checkout_url IS NULL",checkoutId,link,now(),orderId);
+ if(!changed.meta?.changes)return null;
+ await audit(d,'checkout_recovered_from_webhook',orderId,{source:'CHECKOUT_CREATED',verifiedAmountCents:cents});
+ return one(d,'SELECT * FROM orders WHERE id=?',orderId);
+}
 async function eventHandler(env,event){
  const d=env.PAGAMENTO_ARTISYS_DB,type=event.event_type,payload=JSON.parse(event.payload);
  const checkout=isObj(payload.checkout);
- const order=checkout.id?await one(d,'SELECT * FROM orders WHERE checkout_id=?',String(checkout.id)):null;
+ let order=checkout.id?await one(d,'SELECT * FROM orders WHERE checkout_id=?',String(checkout.id)):null;
+ if(!order&&type==='CHECKOUT_CREATED')order=await recoverOrphanCheckoutFromEvent(env,checkout);
  if(type==='CHECKOUT_PAID'){
   if(!order)throw Error('checkout_not_found');
   if(checkout.externalReference&&checkout.externalReference!==order.id)throw Error('reference_mismatch');
@@ -329,8 +359,11 @@ async function process(request,env,ctx){
    try{
     const offer=await one(d,'SELECT * FROM offers WHERE id=?',row.offer_id);
     const checkout=await createCheckout(env,fetch,{...row,payment_provider:'asaas'},offer,paymentMethod);
-    await exec(d,"UPDATE orders SET checkout_id=?,checkout_url=?,checkout_state='ready',updated_at=? WHERE id=? AND checkout_state='creating'",checkout.id,checkout.link,now(),row.id);
-    return send({order:publicOrder(await one(d,'SELECT * FROM orders WHERE id=?',row.id)),checkoutUrl:checkout.link});
+    const persisted=await exec(d,"UPDATE orders SET checkout_id=?,checkout_url=?,checkout_state='ready',updated_at=? WHERE id=? AND checkout_state='creating' AND checkout_id IS NULL AND status='pending'",checkout.id,checkout.link,now(),row.id);
+    if(!persisted.meta?.changes)throw Error('checkout_store_not_confirmed');
+    const saved=await one(d,'SELECT * FROM orders WHERE id=?',row.id);
+    if(saved.checkout_id!==checkout.id||saved.checkout_url!==checkout.link||saved.checkout_state!=='ready')throw Error('checkout_store_inconsistent');
+    return send({order:publicOrder(saved),checkoutUrl:checkout.link});
    }catch(e){
     if(e instanceof AsaasValidationRejection){
      // Rejeição explícita da API: nenhum checkout foi criado no Asaas.
