@@ -28,7 +28,7 @@ API_PATH = "/v1/admin/devkit-releases"
 HEALTH_MARKER = "github-oidc-devkits-v1"
 MAX_ARTIFACT = 15 * 1024 * 1024
 MAX_FILE = 2 * 1024 * 1024
-NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9.-]{0,145}\\.zip")
+NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9.-]{0,145}\.zip")
 
 
 def download_archive():
@@ -52,7 +52,7 @@ def verified_entries(archive, expected_names):
     if len(names) != 72 or len(set(names)) != 72 or set(names) != expected_names | {"SHA256SUMS.txt"}:
         raise SyncError("O artefato não contém exatamente os 71 ZIPs esperados e SHA256SUMS")
     for item in infos:
-        if item.is_dir() or "/" in item.filename or "\\\\" in item.filename or item.file_size > MAX_FILE:
+        if item.is_dir() or "/" in item.filename or chr(92) in item.filename or item.file_size > MAX_FILE:
             raise SyncError("Arquivo inseguro no artefato: " + item.filename)
     try:
         raw = archive.read("SHA256SUMS.txt").decode("ascii").splitlines()
@@ -73,7 +73,7 @@ def verified_entries(archive, expected_names):
         if not NAME_PATTERN.fullmatch(name):
             raise SyncError("Nome de arquivo fora da whitelist")
         content = archive.read(name)
-        if not content.startswith(b"PK\\x03\\x04"):
+        if not content.startswith(b"PK\x03\x04"):
             raise SyncError("Kit não tem formato ZIP: " + name)
         digest = hashlib.sha256(content).hexdigest()
         if digest != checksums[name]:
