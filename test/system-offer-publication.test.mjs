@@ -57,10 +57,10 @@ test('publica somente os quatro sistemas, com todas as 8 variantes válidas, sem
  const after=f.state();
  for(const row of after.filter(x=>SYSTEMS.has(x.id))){
   const previous=before.find(x=>x.id===row.id);
-  assert.deepEqual({...row,active:0},previous);
+  assert.deepEqual({...row,active:0},{...previous});
   assert.equal(row.active,1);
  }
- assert.deepEqual(after.find(x=>x.id==='artisys-demo-kit'),before.find(x=>x.id==='artisys-demo-kit'));
+ assert.deepEqual({...after.find(x=>x.id==='artisys-demo-kit')},{...before.find(x=>x.id==='artisys-demo-kit')});
  const audit=f.sqlite.prepare("SELECT * FROM audit_logs WHERE kind='system_offers_published' AND subject_id=?").get(SYSTEM_OFFER_ROLLOUT);
  assert.ok(audit);
  assert.deepEqual(JSON.parse(audit.details).sort(),[...SYSTEMS.keys()].sort());
