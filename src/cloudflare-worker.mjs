@@ -1,6 +1,7 @@
 import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
+import {publishVerifiedSystems} from './system-offer-publication.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
 import {devkitReleaseAdmin} from './devkit-release-admin.mjs';
 import {verifyReleaseGithubOidc} from './github-oidc.mjs';
@@ -529,6 +530,6 @@ export default {
  },
  async scheduled(event,env,ctx){
   ctx.waitUntil((async()=>{await initialize(env);await reconcilePending(env);await queueWorker(env);})().catch(e=>console.error('scheduled_error',String(e.message).slice(0,120))));
-  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);await prepareSystemDrafts(env.PAGAMENTO_ARTISYS_DB);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
+  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);await prepareSystemDrafts(env.PAGAMENTO_ARTISYS_DB);const publication=await publishVerifiedSystems(env);if(publication.published)console.info('four_system_offers_published',publication.ids.join(','));else if(!['already_published','payments_not_enabled'].includes(publication.reason))console.info('four_system_offers_waiting',publication.reason);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
  }
 };
