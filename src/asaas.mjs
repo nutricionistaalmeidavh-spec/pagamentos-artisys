@@ -45,6 +45,15 @@ export function validCheckoutUrl(url) {
     return parsed.protocol === 'https:' && CHECKOUT_HOSTS.has(parsed.hostname) && parsed.pathname.startsWith('/checkoutSession/') && !parsed.username && !parsed.password;
   } catch { return false; }
 }
+export function checkoutUrlForId(env,id) {
+  const value=String(id||'');
+  if(!/^[a-zA-Z0-9_-]{8,120}$/.test(value))throw new Error('asaas_checkout_id_invalid');
+  const base=gatewayConfig(env);
+  const host=base.includes('sandbox')?'https://sandbox.asaas.com':'https://asaas.com';
+  const link=host+'/checkoutSession/show?id='+encodeURIComponent(value);
+  if(!validCheckoutUrl(link))throw new Error('asaas_checkout_url_invalid');
+  return link;
+}
 export async function createCheckout(env, fetchImpl, order, offer, paymentMethod='default') {
   const base = gatewayConfig(env);
   const recurring = order.sale_type !== 'one_time';
@@ -72,9 +81,7 @@ export async function createCheckout(env, fetchImpl, order, offer, paymentMethod
   // Asaas documenta que POST /checkouts devolve o ID; a URL canônica é
   // /checkoutSession/show?id=ID. Não depender de data.link (opcional/variável),
   // nem do formato /show/ID, que não é o endpoint documentado.
-  const host = base.includes('sandbox') ? 'https://sandbox.asaas.com' : 'https://asaas.com';
-  const link = host + '/checkoutSession/show?id=' + encodeURIComponent(id);
-  if (!validCheckoutUrl(link)) throw new Error('asaas_checkout_url_invalid');
+  const link=checkoutUrlForId(env,id);
   return { id, link };
 }
 export function checkoutAmountCents(checkout) {
