@@ -176,7 +176,7 @@ test('Asaas HTTP 400 Pix ausente é rejeição conclusiva; permite reusar o mesm
   assert.deepEqual(requests[0].payload.billingTypes,['PIX','CREDIT_CARD']);
   assert.equal(requests[0].payload.callback.successUrl,'https://checkout.example/pedido?id='+id);
   assert.equal(requests[0].payload.callback.cancelUrl,requests[0].payload.callback.successUrl);
-  assert.doesNotMatch(requests[0].payload.callback.expiredUrl,/\\/\\/pedido/);
+  assert.equal(requests[0].payload.callback.expiredUrl.includes('//pedido'),false);
   const rejected=env.PAGAMENTO_ARTISYS_DB.raw.prepare('SELECT payment_provider,checkout_state,checkout_id,status FROM orders WHERE id=?').get(id);
   assert.equal(rejected.checkout_state,'not_started');
   assert.equal(rejected.payment_provider,null);
