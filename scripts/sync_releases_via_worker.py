@@ -32,8 +32,10 @@ RETRYABLE = {429, 502, 503, 504}
 
 
 class OidcClient:
-    def __init__(self, root=ROOT):
+    def __init__(self, root=ROOT, *, audience=AUDIENCE, status_path=STATUS_PATH):
         self.root = root.rstrip("/")
+        self.audience = audience
+        self.status_path = status_path
         self.token = None
         self.issued = 0.0
 
@@ -44,7 +46,7 @@ class OidcClient:
         request_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
         if not env_url or not request_token:
             raise SyncError("OIDC do GitHub Actions indisponível. Requer permissions: id-token: write")
-        url = env_url + ("&" if "?" in env_url else "?") + urllib.parse.urlencode({"audience": AUDIENCE})
+        url = env_url + ("&" if "?" in env_url else "?") + urllib.parse.urlencode({"audience": self.audience})
         req = urllib.request.Request(
             url, headers={"Authorization": f"Bearer {request_token}", "Accept": "application/json"}
         )
@@ -68,8 +70,8 @@ class OidcClient:
             print("OIDC metadata indisponíveis para diagnóstico",flush=True)
         return self.token
 
-    def call(self, path, method="GET", payload=None, *, json_body=True, attempts=4):
-        if not path.startswith(STATUS_PATH):
+    def call(self, path, method="GET", payload=None, *, json_body=True, attempts=4, extra_headers=None):
+        if not path.startswith(self.status_path):
             raise SyncError("Rota de upload não permitida")
         url = self.root + path
         last_error = None
@@ -77,6 +79,8 @@ class OidcClient:
             token = self.github_token(force=attempt > 0 and isinstance(last_error, urllib.error.HTTPError) and last_error.code == 401)
             headers = {"Authorization": "Bearer " + token, "Accept": "application/json",
                        "User-Agent": "ArtiSys-Github-OIDC-R2/1.0"}
+            if extra_headers:
+                headers.update(extra_headers)
             if payload is not None:
                 headers["Content-Type"] = "application/json" if json_body else "application/octet-stream"
                 body = json.dumps(payload).encode() if json_body else payload

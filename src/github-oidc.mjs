@@ -6,9 +6,11 @@
 export const GITHUB_RELEASE_AUDIENCE='artisys-release-sync-r2';
 const ISSUER='https://token.actions.githubusercontent.com';
 const JWKS_URL=ISSUER+'/.well-known/jwks';
-const ALLOWLIST=new Map([
- ['nutricionistaalmeidavh-spec/pagamentos-artisys','.github/workflows/sync-system-releases-r2.yml'],
-]);
+const WORKFLOWS=Object.freeze({
+ systems:'.github/workflows/sync-system-releases-r2.yml',
+ devkits:'.github/workflows/sync-devkits-r2.yml'
+});
+const DEVKIT_AUDIENCE='artisys-devkit-sync-r2';
 const toBytes=value=>{
  const padded=value.replace(/-/g,'+').replace(/_/g,'/');
  const text=atob(padded+'='.repeat((4-padded.length%4)%4));
@@ -16,9 +18,10 @@ const toBytes=value=>{
 };
 const decodeJson=v=>JSON.parse(new TextDecoder().decode(toBytes(v)));
 const looksJwt=x=>typeof x==='string'&&x.length>80&&x.length<10000&&x.split('.').length===3;
-function validatedClaims(c,epochSeconds){
- const repo=c?.repository,workflow=ALLOWLIST.get(repo);
- if(!workflow||c.iss!==ISSUER||c.aud!==GITHUB_RELEASE_AUDIENCE)return false;
+function validatedClaims(c,epochSeconds,mode='systems'){
+ const repo=c?.repository,workflow=WORKFLOWS[mode];
+ if(repo!=='nutricionistaalmeidavh-spec/pagamentos-artisys'||!workflow||c.iss!==ISSUER||
+    c.aud!==(mode==='devkits'?DEVKIT_AUDIENCE:GITHUB_RELEASE_AUDIENCE))return false;
  if(c.ref!=='refs/heads/main')return false;
  // GitHub's 2026 OIDC sub pins immutable owner/repo IDs (API-confirmed).
  const expectedSubject='repo:nutricionistaalmeidavh-spec@230622366/pagamentos-artisys@1411079341:ref:refs/heads/main';
@@ -32,7 +35,7 @@ function validatedClaims(c,epochSeconds){
  return true;
 }
 /** Reject invalid tokens, unsigned tokens, unknown repos, other branches/workflows and stale JWTs. */
-export async function verifyReleaseGithubOidc(request,fetchImpl=fetch,epochSeconds=Math.floor(Date.now()/1000)){
+export async function verifyReleaseGithubOidc(request,fetchImpl=fetch,epochSeconds=Math.floor(Date.now()/1000),mode='systems'){
  const authorization=request.headers.get('authorization')||'';
  if(!authorization.startsWith('Bearer '))return false;
  const token=authorization.slice(7).trim();
@@ -41,7 +44,7 @@ export async function verifyReleaseGithubOidc(request,fetchImpl=fetch,epochSecon
  let hdr,payload;
  try{hdr=decodeJson(parts[0]);payload=decodeJson(parts[1]);}
  catch{return false;}
- if(hdr?.alg!=='RS256'||typeof hdr.kid!=='string'||hdr.kid.length>200||!validatedClaims(payload,epochSeconds))return false;
+ if(hdr?.alg!=='RS256'||typeof hdr.kid!=='string'||hdr.kid.length>200||!validatedClaims(payload,epochSeconds,mode))return false;
  try{
   const response=await fetchImpl(JWKS_URL,{headers:{accept:'application/json'},cf:{cacheEverything:true,cacheTtl:3600}});
   if(!response.ok)return false;

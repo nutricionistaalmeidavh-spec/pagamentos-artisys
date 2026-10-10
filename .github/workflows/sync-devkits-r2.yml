@@ -1,0 +1,58 @@
+name: ArtiSys · Sincronizar 63 Dev Kits e 8 pacotes no R2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-devkits-r2.yml'
+      - 'src/devkit-releases.mjs'
+      - 'src/devkit-release-admin.mjs'
+      - 'src/github-oidc.mjs'
+      - 'src/cloudflare-worker.mjs'
+      - 'scripts/sync_devkits_via_worker.py'
+      - 'scripts/sync_releases_via_worker.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artisys-devkit-archives-r2
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validar manifesto 63 kits + 8 pacotes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm run check
+      - name: Validar fonte imutável e inventário
+        run: |
+          python scripts/sync_devkits_via_worker.py --validate-only
+          node --input-type=module -e "import {DEVKIT_RELEASES} from './src/devkit-releases.mjs'; if(DEVKIT_RELEASES.length!==71) process.exit(1); console.log('71 nomes canônicos conferidos')"
+
+  upload:
+    name: Copiar 71 ZIPs existentes ao R2 privado por OIDC
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download do artifact QA original + SHA-256 + R2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/sync_devkits_via_worker.py

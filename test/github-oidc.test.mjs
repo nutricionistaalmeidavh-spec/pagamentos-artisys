@@ -64,3 +64,13 @@ test('OIDC upload exige hash canônico, não apenas tamanho',async()=>{
   assert.equal((await r.json()).error,'file_hash_mismatch');
  }finally{globalThis.fetch=old;}
 });
+
+test('OIDC Dev Kits é exclusivo do segundo workflow, audience e main',async()=>{
+ const devkits={...claim(),aud:'artisys-devkit-sync-r2',
+  workflow_ref:repo+'/.github/workflows/sync-devkits-r2.yml@refs/heads/main',
+  event_name:'push'};
+ assert.equal(await verifyReleaseGithubOidc(req(jwt(devkits)),keys,now,'devkits'),true);
+ assert.equal(await verifyReleaseGithubOidc(req(jwt(devkits)),keys,now),false);
+ assert.equal(await verifyReleaseGithubOidc(req(jwt()),keys,now,'devkits'),false);
+ assert.equal(await verifyReleaseGithubOidc(req(jwt({...devkits,ref:'refs/heads/feature'})),keys,now,'devkits'),false);
+});
