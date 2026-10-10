@@ -135,3 +135,14 @@ test('plataforma escolhida fica congelada no pedido, sem modificar oferta',async
  const refreshed=(await call(env,'/v1/admin/offers','GET',null,ADMIN)).data.offers.find(x=>x.id==='pdv-nexus');
  assert.equal(refreshed.artifact_name,o.artifact_name,'seleção não altera o arquivo canônico da oferta');
 });
+
+test('catálogo público expõe apenas ofertas ativas com CORS de leitura; admin segue restrito',async()=>{
+ const env=setup();
+ const catalog=await call(env,'/v1/catalog','GET');
+ assert.equal(catalog.status,200);
+ assert.equal(catalog.response.headers.get('access-control-allow-origin'),'*');
+ assert.ok(Array.isArray(catalog.data.offers));
+ const admin=await call(env,'/v1/admin/offers');
+ assert.equal(admin.status,401);
+ assert.notEqual(admin.response.headers.get('access-control-allow-origin'),'*');
+});
