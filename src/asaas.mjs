@@ -1,6 +1,20 @@
 const HOSTS = new Set(['api.asaas.com', 'api-sandbox.asaas.com']);
 const CHECKOUT_HOSTS = new Set(['asaas.com', 'sandbox.asaas.com']);
 
+// Apenas respostas de validação explícitas (HTTP 400) são rejeições conclusivas.
+// Timeouts, 5xx e erros de rede continuam inconclusivos por segurança financeira.
+export class AsaasValidationRejection extends Error {
+  constructor(code,status=400){super(code);this.name='AsaasValidationRejection';this.httpStatus=status;}
+}
+function classifiedValidationError(status,body){
+  if(status!==400||!Array.isArray(body?.errors)||!body.errors.length)return null;
+  const pixKeyMissing=body.errors.some(err=>
+    err?.code==='invalid_object' &&
+    /chave\s*pix/i.test(String(err?.description||'')) &&
+    /(criar|cadastr|necess[aá]ri)/i.test(String(err?.description||'')));
+  return new AsaasValidationRejection(pixKeyMissing?'asaas_pix_key_required':'asaas_checkout_rejected',status);
+}
+
 export function gatewayConfig(env) {
   if (!env.ASAAS_API_KEY) throw new Error('asaas_not_configured');
   const base = new URL(env.ASAAS_API_BASE_URL || 'https://api-sandbox.asaas.com/v3');
@@ -18,7 +32,11 @@ export async function asaasRequest(env, fetchImpl, path, init = {}) {
     signal: AbortSignal.timeout(12000)
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error('asaas_http_' + response.status);
+  if (!response.ok) {
+    const validationError=classifiedValidationError(response.status,body);
+    if(validationError)throw validationError;
+    throw new Error('asaas_http_' + response.status);
+  }
   return body;
 }
 export function validCheckoutUrl(url) {
@@ -30,15 +48,17 @@ export function validCheckoutUrl(url) {
 export async function createCheckout(env, fetchImpl, order, offer) {
   const base = gatewayConfig(env);
   const recurring = order.sale_type !== 'one_time';
+  // URL absoluta normalizada: PUBLIC_BASE_URL pode vir com barra final.
+  const returnUrl=new URL('/pedido?id='+encodeURIComponent(order.id),env.PUBLIC_BASE_URL).href;
   const body = {
     externalReference: order.id,
-    billingTypes: recurring ? ['CREDIT_CARD'] : ['PIX', 'CREDIT_CARD'],
+    billingTypes: recurring || env.ASAAS_PIX_ENABLED!=='true' ? ['CREDIT_CARD'] : ['PIX', 'CREDIT_CARD'],
     chargeTypes: recurring ? ['RECURRENT'] : ['DETACHED'],
     minutesToExpire: 60,
     callback: {
-      successUrl: env.PUBLIC_BASE_URL + '/pedido?id=' + encodeURIComponent(order.id),
-      cancelUrl: env.PUBLIC_BASE_URL + '/pedido?id=' + encodeURIComponent(order.id),
-      expiredUrl: env.PUBLIC_BASE_URL + '/pedido?id=' + encodeURIComponent(order.id)
+      successUrl: returnUrl,
+      cancelUrl: returnUrl,
+      expiredUrl: returnUrl
     },
     items: [{ name: offer.name, description: offer.description || offer.name, quantity: 1, value: order.amount_cents / 100 }]
   };
