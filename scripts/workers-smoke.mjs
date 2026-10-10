@@ -30,7 +30,8 @@ try{
  const adminCSS=await fetch(base+'/assets/admin.css');assert.equal(adminCSS.status,200);assert.match(await adminCSS.text(),/safe-area-inset-bottom/);
  const adminScript=await fetch(base+'/assets/admin.js');assert.equal(adminScript.status,200);assert.match(await adminScript.text(),/renderOrders/);
  assert.equal((await call('/v1/admin/summary')).status,401);
- // Somente Worker local efêmero: PAYMENTS_ENABLED=true não habilita cobrança real nem configura o Asaas.\n const o=await call('/v1/admin/offers','POST',{id:'pdv-test',productId:'pdv-artisys',name:'PDV',priceCents:18900,deliveryMode:'manual',active:true},admin);
+ // Somente Worker local efêmero: PAYMENTS_ENABLED=true não habilita cobrança real nem configura o Asaas.
+ const o=await call('/v1/admin/offers','POST',{id:'pdv-test',productId:'pdv-artisys',name:'PDV',priceCents:18900,deliveryMode:'manual',active:true},admin);
  assert.equal(o.status,200,JSON.stringify(o.data));
  const catalog=await call('/v1/catalog');
  assert.equal(catalog.data.offers.find(x=>x.id==='pdv-test').priceCents,18900);
