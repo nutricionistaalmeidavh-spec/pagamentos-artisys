@@ -242,6 +242,7 @@ function orderActions(o){
  if(o.paymentProvider==='manual_pix'&&o.status==='pending')out.push('<button class="primary full" data-op="confirm-manual" data-id="'+esc(o.id)+'" type="button">Confirmar recebimento do Pix manual</button>');
  if(o.fulfillmentStatus==='awaiting_manual'&&o.status==='paid')out.push('<button class="primary full" data-op="deliver-manual" data-id="'+esc(o.id)+'" type="button">Confirmar entrega manual</button>');
  if(o.paymentProvider==='asaas'&&o.checkoutState==='verifying')out.push('<button class="secondary full" data-op="reconcile" data-id="'+esc(o.id)+'" type="button">Consultar pagamento no Asaas</button>');
+ if(o.status==='paid')out.push('<button class="secondary full" data-rotate-access="'+esc(o.id)+'" type="button">Reemitir código de acesso ao comprador</button>');
  return out.join('<div class="section-divider"></div>');
 }
 function openOrder(id){
@@ -262,6 +263,54 @@ function confirmAction(title,text,action,kind='orders'){
  el('modal-content').querySelector('[data-confirm-action]').addEventListener('click',async e=>withBusy(e.currentTarget,async()=>{
   await api(kind+'/'+encodeURIComponent(action.id)+'/'+action.type,'POST',{});
   closeModal();toast('Operação confirmada no servidor.');await load(action.after||'pedidos');
+ }));
+}
+function prepareSystems(){
+ openModal('Preparar downloads','<p>Configurar os quatro sistemas como downloads protegidos, preservando preços, pedidos e status de rascunho.</p>'+
+  '<p>Nenhuma cobrança ou oferta será ativada.</p><div class="form-actions"><button class="secondary" data-close>Cancelar</button>'+
+  '<button id="confirm-prepare" class="primary" type="button">Preparar quatro sistemas</button></div>');
+ el('confirm-prepare').addEventListener('click',async e=>withBusy(e.currentTarget,async()=>{
+  const r=await api('prepare-download-offers','POST',{});
+  closeModal();toast('Preparação concluída: '+r.results.filter(x=>x.updated).length+' oferta(s) ajustada(s).');
+  await load('ofertas');
+ }));
+}
+function licenseReview(file){
+ const slug=file.replace(/-v[0-9]+\\.[0-9]+\\.[0-9]+\\.zip$/,'');
+ const href='https://github.com/nutricionistaalmeidavh-spec/DevKitTools/tree/main/kits/'+encodeURIComponent(slug);
+ openModal('Conferência comercial do Dev Kit','<p><strong>'+esc(file)+'</strong></p>'+
+  '<p>Antes de homologar, confira titularidade do código, dependências de terceiros, atribuições, termos comerciais e documentação.</p>'+
+  '<p><a href="'+href+'" target="_blank" rel="noopener noreferrer">Abrir documentação e licenças deste kit no GitHub</a></p>'+
+  '<form id="license-form" class="form-stack"><label><input type="checkbox" name="licenses" required> Conferi licenças, direitos de distribuição e NOTICEs</label>'+
+  '<label><input type="checkbox" name="documentation" required> Conferi documentação e conteúdo entregue</label>'+
+  '<label>Digite a confirmação <strong>CONFIRMO LICENCAS E DOCUMENTACAO</strong><input name="confirm" required autocomplete="off"></label>'+
+  '<div class="form-actions"><button class="secondary" data-close type="button">Cancelar</button>'+
+  '<button class="primary" type="submit">Registrar revisão (sem publicar)</button></div></form>');
+ el('license-form').addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.currentTarget,d=new FormData(form);
+  await withBusy(form.querySelector('[type="submit"]'),async()=>{
+   await api('review-devkit-license','POST',{artifactName:file,approved:true,licensesChecked:d.has('licenses'),
+    documentationChecked:d.has('documentation'),confirm:String(d.get('confirm')||'')});
+   closeModal();toast('Revisão registrada. Oferta continua como rascunho.');await load('ofertas');
+  });
+ });
+}
+function rotateAccess(orderId){
+ const order=orders.find(x=>x.id===orderId);if(!order||order.status!=='paid')return;
+ openModal('Reemitir código de acesso','<p>Esta operação invalida o código anterior e gera um novo. Verifique a identidade do comprador por um canal confiável antes de enviá-lo.</p>'+
+ '<div class="form-actions"><button class="secondary" data-close type="button">Cancelar</button>'+
+ '<button id="confirm-rotate" class="primary" type="button">Gerar novo código</button></div>');
+ el('confirm-rotate').addEventListener('click',async e=>withBusy(e.currentTarget,async()=>{
+  const r=await api('orders/'+encodeURIComponent(orderId)+'/rotate-access','POST',{});
+  openModal('Novo código — exibido uma única vez','<p>Pedido: '+esc(r.orderId)+'</p>'+
+   '<p>Envie somente após confirmar a identidade do comprador. Código anterior invalidado.</p>'+
+   '<code style="overflow-wrap:anywhere">'+esc(r.orderAccessToken)+'</code>'+
+   '<div class="form-actions"><button id="copy-rotated" class="secondary" type="button">Copiar código</button>'+
+   '<button data-close class="primary" type="button">Concluir</button></div>');
+  el('copy-rotated').addEventListener('click',async e=>{
+   try{await navigator.clipboard.writeText(r.orderAccessToken);e.currentTarget.textContent='Copiado';}
+   catch{showError(Error('Copie o código exibido manualmente.'));}
+  });
  }));
 }
 function openOffer(id){
@@ -371,6 +420,9 @@ document.addEventListener('click',e=>{
  if(button.dataset.order){openOrder(button.dataset.order);return;}
  if(button.dataset.offer){openOffer(button.dataset.offer);return;}
  if(button.id==='import-catalog'){importCatalog();return;}
+ if(button.id==='prepare-systems'){prepareSystems();return;}
+ if(button.dataset.reviewLicense){licenseReview(button.dataset.reviewLicense);return;}
+ if(button.dataset.rotateAccess){rotateAccess(button.dataset.rotateAccess);return;}
  if(button.id==='new-offer'||button.hasAttribute('data-new-offer')){offerWizard();return;}
  if(button.dataset.editOffer!==undefined){offerWizard(button.dataset.editOffer);return;}
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}
