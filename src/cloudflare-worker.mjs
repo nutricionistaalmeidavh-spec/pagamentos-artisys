@@ -1,4 +1,4 @@
-import {createCheckout,verifyCheckoutPayment,verifyPaymentEvent} from './asaas.mjs';
+import {createCheckout,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
@@ -245,7 +245,7 @@ async function process(request,env,ctx){
  if(method==='GET'&&path==='/healthz'){
   await initialize(env);
   const count=await one(d,"SELECT COUNT(*) AS total FROM offers WHERE id IN ("+CATALOG_DRAFTS.map(()=>'?').join(',')+")",...CATALOG_DRAFTS.map(x=>x.id));
-  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,manualPixConfigured:!!env.MANUAL_PIX_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67,releaseSyncAuth:'github-oidc-v2',devkitSyncAuth:'github-oidc-devkits-v1'});
+  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,asaasPixEnabled:env.ASAAS_PIX_ENABLED==='true',manualPixConfigured:!!env.MANUAL_PIX_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67,releaseSyncAuth:'github-oidc-v2',devkitSyncAuth:'github-oidc-devkits-v1'});
  }
  if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
   const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
@@ -308,7 +308,8 @@ async function process(request,env,ctx){
   if(method==='POST'&&ord[2]==='checkout'){
    if(!allowedOrigin)throw fail('origin_not_allowed',403);
    if(env.PAYMENTS_ENABLED!=='true')throw fail('payments_not_enabled',503);
-   const v=isObj(await read(request)),provider=String(v.provider||'');
+   const v=isObj(await read(request)),provider=String(v.provider||''),paymentMethod=String(v.paymentMethod||'default');
+   if(!['default','credit_card'].includes(paymentMethod))throw fail('invalid_payment_method');
    if(!['asaas','manual_pix'].includes(provider))throw fail('invalid_provider');
    if(row.status!=='pending'||['canceled','expired'].includes(row.checkout_state))throw fail('order_not_payable',409);
    if(row.payment_provider&&row.payment_provider!==provider)throw fail('provider_selected',409);
@@ -327,11 +328,21 @@ async function process(request,env,ctx){
    if(!taken.meta?.changes)throw fail('checkout_in_progress',409);
    try{
     const offer=await one(d,'SELECT * FROM offers WHERE id=?',row.offer_id);
-    const checkout=await createCheckout(env,fetch,{...row,payment_provider:'asaas'},offer);
+    const checkout=await createCheckout(env,fetch,{...row,payment_provider:'asaas'},offer,paymentMethod);
     await exec(d,"UPDATE orders SET checkout_id=?,checkout_url=?,checkout_state='ready',updated_at=? WHERE id=? AND checkout_state='creating'",checkout.id,checkout.link,now(),row.id);
     return send({order:publicOrder(await one(d,'SELECT * FROM orders WHERE id=?',row.id)),checkoutUrl:checkout.link});
    }catch(e){
-    await exec(d,"UPDATE orders SET checkout_state='verifying',updated_at=? WHERE id=?",now(),row.id);
+    if(e instanceof AsaasValidationRejection){
+     // Rejeição explícita da API: nenhum checkout foi criado no Asaas.
+     // Permite reutilizar este pedido, sem criar outra cobrança.
+     const rollback=await exec(d,"UPDATE orders SET payment_provider=NULL,checkout_state='not_started',updated_at=? WHERE id=? AND checkout_state='creating' AND checkout_id IS NULL AND status='pending'",now(),row.id);
+     if(rollback.meta?.changes){
+      await audit(d,'checkout_rejected',row.id,{code:e.message,httpStatus:e.httpStatus,action:'retry_allowed'});
+      throw fail(e.message,409);
+     }
+    }
+    // Rede/timeout/5xx ou estado alterado: continuar com a conciliação segura.
+    await exec(d,"UPDATE orders SET checkout_state='verifying',updated_at=? WHERE id=? AND checkout_state='creating' AND status='pending'",now(),row.id);
     await audit(d,'checkout_inconclusive',row.id,{reason:String(e.message).slice(0,90)});
     throw fail('checkout_requires_reconciliation',502);
    }
