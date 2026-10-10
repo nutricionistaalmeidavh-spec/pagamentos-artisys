@@ -2,8 +2,9 @@ import hashlib
 import pathlib
 import tempfile
 import unittest
+import urllib.request
 
-from scripts.sync_system_releases import SyncError, remote_matches, validate, verified_hash
+from scripts.sync_system_releases import SyncError, SafeRedirect, remote_matches, validate, verified_hash
 
 
 def entry():
@@ -24,6 +25,25 @@ class FakeClient:
 
 
 class ReleaseSyncTests(unittest.TestCase):
+    def test_github_artifact_redirect_removes_bearer_cross_domain(self):
+        url='https://api.github.com/repos/owner/repo/actions/artifacts/123/zip'
+        req=urllib.request.Request(url,headers={'Authorization':'Bearer secret-value','User-Agent':'ArtiSys-Release-Sync'})
+        req.add_unredirected_header('AUTHORIZATION','Bearer extra-secret')
+        handler=SafeRedirect()
+        forwarded=handler.redirect_request(
+            req,None,302,'Found',{},'https://results-receiver.githubusercontent.com/archive/123'
+        )
+        self.assertIsNotNone(forwarded)
+        for mapping in (forwarded.headers,forwarded.unredirected_hdrs):
+            self.assertNotIn('authorization',{key.lower() for key in mapping})
+        self.assertEqual(forwarded.get_header('User-agent'),'ArtiSys-Release-Sync')
+
+    def test_redirect_never_downgrades_https_even_with_public_artifacts(self):
+        handler=SafeRedirect()
+        req=urllib.request.Request('https://github.com/owner/repo/releases/download/v1/test.exe')
+        with self.assertRaisesRegex(SyncError,'não HTTPS'):
+            handler.redirect_request(req,None,302,'Found',{},'http://example.com/file.exe')
+
     def test_sha256_accepts_only_matching_bytes(self):
         data,item=entry()
         with tempfile.TemporaryDirectory() as temp:
