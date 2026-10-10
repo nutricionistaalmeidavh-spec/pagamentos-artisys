@@ -2,7 +2,24 @@ const el=id=>document.getElementById(id);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=x=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(x)||0)/100);
 const p=new URLSearchParams(location.search),selected=p.get('oferta'),id=p.get('id');
-const notify=e=>{el('alert').textContent=String(e?.message||e);};
+const errorMessages={
+ asaas_pix_key_required:'O Pix está temporariamente indisponível porque a loja ainda precisa cadastrar sua chave no Asaas. Você pode continuar com cartão de crédito.',
+ asaas_checkout_rejected:'O provedor recusou os dados desta tentativa. Tente pagar com cartão ou entre em contato com o suporte.',
+ checkout_requires_reconciliation:'Estamos verificando a tentativa anterior com o provedor. Por segurança, não criaremos outra cobrança até a conferência.',
+ checkout_in_progress:'O checkout está sendo preparado. Aguarde antes de tentar novamente.',
+ asaas_not_configured:'Pagamento temporariamente indisponível. Entre em contato com o suporte.',
+ internal_error:'Não foi possível concluir agora. Confira a situação do pedido antes de tentar novamente.'
+};
+const friendlyError=e=>errorMessages[String(e?.message||e)]||'Não foi possível concluir a solicitação. Consulte a situação do seu pedido.';
+const notify=e=>{el('alert').textContent=friendlyError(e);};
+async function retryCreditCard(orderId,code){
+ const button=el('retry-card');if(button)button.disabled=true;
+ try{
+  const checkout=await api('/v1/orders/'+orderId+'/checkout','POST',{provider:'asaas',paymentMethod:'credit_card'},code);
+  if(checkout.checkoutUrl){location.assign(checkout.checkoutUrl);return;}
+  await showOrder(orderId,code);
+ }catch(e){notify(e);const button=el('retry-card');if(button)button.disabled=false;}
+}
 const saved=id=>sessionStorage.getItem('artisys-order-'+id)||'';
 const store=(id,code)=>sessionStorage.setItem('artisys-order-'+id,code);
 async function api(path,method='GET',body=null,code=''){
@@ -48,7 +65,7 @@ async function catalog(){
   const variantField=variants.length?'<label>Versão para seu sistema operacional<select name="variantId" required>'+variants.map(x=>
    '<option value="'+esc(x.id)+'">'+esc(x.platform)+' · versão '+esc(x.version)+'</option>').join('')+'</select></label>':'';
   const paymentTypes=[
-   ...(health.gatewayConfigured?['<option value="asaas">Pix ou cartão — Asaas</option>']:[]),
+   ...(health.gatewayConfigured?['<option value="asaas">'+(health.asaasPixEnabled?'Pix ou cartão':'Cartão de crédito')+' — Asaas</option>']:[]),
    ...(health.manualPixConfigured?['<option value="manual_pix">Pix manual (conferência administrativa)</option>']:[])
   ];
   el('content').innerHTML='<h2>'+esc(offer.name)+'</h2><p class="muted">'+esc(offer.description)+'</p><p class="price">'+money(offer.priceCents)+'</p>'+
@@ -75,12 +92,21 @@ async function catalog(){
       '<p><button class="secondary" id="show-order" type="button">Consultar pedido</button></p>';
     copyAccess(code);
     el('show-order').addEventListener('click',()=>showOrder(orderId,code));
-    const checkout=await api('/v1/orders/'+orderId+'/checkout','POST',{provider:f.get('provider')},code);
+    const checkout=await api('/v1/orders/'+orderId+'/checkout','POST',{provider:f.get('provider'),paymentMethod:'default'},code);
     const result=el('checkout-result');
     if(result)result.innerHTML=checkout.checkoutUrl
       ?'<p><a class="primary" href="'+esc(checkout.checkoutUrl)+'" rel="noreferrer">Prosseguir para pagamento</a></p>'
       :'<p>Pix manual: liberação somente após confirmação administrativa.</p><p>Chave Pix: <strong>'+esc(checkout.manualPixKey||'')+'</strong></p>';
-   }catch(e){notify(e);}finally{button.disabled=false;}
+   }catch(e){
+    notify(e);
+    const orderId=new URLSearchParams(location.search).get('id'),code=orderId?saved(orderId):'';
+    const result=el('checkout-result');
+    if(result&&orderId&&code){
+     const retry=['asaas_pix_key_required','asaas_checkout_rejected'].includes(String(e?.message||''));
+     result.innerHTML='<p>'+esc(friendlyError(e))+'</p>'+(retry?'<button class="secondary" id="retry-card" type="button">Continuar com cartão de crédito</button>':'');
+     if(retry)el('retry-card').addEventListener('click',()=>retryCreditCard(orderId,code));
+    }
+   }finally{button.disabled=false;}
   });
  }catch(e){notify(e);}
 }
@@ -93,14 +119,16 @@ async function showOrder(orderId,code,pixKey=''){
   el('content').innerHTML='<p class="kicker">PEDIDO '+esc(orderId.slice(0,8))+'</p><h2>'+esc(labels[o.status]||o.status)+'</h2>'+
     '<p><b>'+esc(o.productId)+'</b> · '+money(o.amountCents)+'</p>'+
     (o.platform?'<p>Plataforma: '+esc(o.platform)+(o.version?' · versão '+esc(o.version):'')+'</p>':'')+
-    '<p class="muted">Entrega: '+esc(o.fulfillmentStatus)+' / Cobrança: '+esc(o.checkoutState)+'</p>'+
+    '<p class="muted">'+esc(o.status==='paid'?'Pagamento confirmado. Preparando entrega.':o.checkoutState==='verifying'?'Aguardando verificação segura da tentativa anterior.':o.checkoutState==='not_started'?'Aguardando escolha da forma de pagamento.':'Aguardando confirmação do pagamento.')+'</p>'+
     (pixKey?'<div class="card"><b>Chave Pix manual</b><p>'+esc(pixKey)+'</p></div>':'')+
     accessPanel(orderId,code)+
     (o.checkoutUrl&&o.status==='pending'?'<p><a href="'+esc(o.checkoutUrl)+'" rel="noreferrer">Retomar checkout</a></p>':'')+
+    (o.status==='pending'&&o.checkoutState==='not_started'?'<p><button id="retry-card" class="primary" type="button">Continuar com cartão de crédito</button></p>':'')+
     (ready?'<p>Arquivo: '+esc(o.downloadName)+'</p><button class="primary" id="download" type="button">Baixar arquivo</button>':'')+
     '<p><button class="secondary" id="refresh" type="button">Atualizar situação</button></p>';
   copyAccess(code);
   el('refresh').addEventListener('click',()=>showOrder(orderId,code));
+  if(el('retry-card'))el('retry-card').addEventListener('click',()=>retryCreditCard(orderId,code));
   if(ready)el('download').addEventListener('click',()=>{
    // Form POST: navegador faz streaming sem carregar instaladores de 100+ MB na memória.
    const form=document.createElement('form');
