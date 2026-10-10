@@ -70,7 +70,7 @@ class OidcClient:
             print("OIDC metadata indisponíveis para diagnóstico",flush=True)
         return self.token
 
-    def call(self, path, method="GET", payload=None, *, json_body=True, attempts=4):
+    def call(self, path, method="GET", payload=None, *, json_body=True, attempts=4, extra_headers=None):
         if not path.startswith(self.status_path):
             raise SyncError("Rota de upload não permitida")
         url = self.root + path
@@ -79,6 +79,8 @@ class OidcClient:
             token = self.github_token(force=attempt > 0 and isinstance(last_error, urllib.error.HTTPError) and last_error.code == 401)
             headers = {"Authorization": "Bearer " + token, "Accept": "application/json",
                        "User-Agent": "ArtiSys-Github-OIDC-R2/1.0"}
+            if extra_headers:
+                headers.update(extra_headers)
             if payload is not None:
                 headers["Content-Type"] = "application/json" if json_body else "application/octet-stream"
                 body = json.dumps(payload).encode() if json_body else payload
