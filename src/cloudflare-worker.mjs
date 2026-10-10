@@ -276,17 +276,28 @@ async function process(request,env,ctx){
  }
  const ord=path.match(/^\/v1\/orders\/([a-f0-9-]{36})(?:\/(checkout|download))?$/);
  if(ord){
-  const row=await authorizedOrder(request,env,ord[1]);
+  let formCode=null;
+  if(method==='POST'&&ord[2]==='download'){
+   if(!allowedOrigin||Number(request.headers.get('content-length')||0)>1000)throw fail('invalid_download_request',403);
+   if(!String(request.headers.get('content-type')||'').startsWith('application/x-www-form-urlencoded'))throw fail('invalid_download_request',400);
+   const raw=await request.text();if(raw.length>1000)throw fail('invalid_download_request',413);
+   formCode=new URLSearchParams(raw).get('accessCode')||'';
+   if(!/^[a-f0-9]{64}$/.test(formCode))throw fail('invalid_download_request',403);
+  }
+  const row=await authorizedOrder(request,env,ord[1],formCode||headerToken(request));
   if(method==='GET'&&!ord[2])return send({order:publicOrder(row)});
-  if(method==='GET'&&ord[2]==='download'){
-   if(row.status!=='paid'||row.fulfillment_status!=='delivered'||row.delivery_mode!=='download'||!validArtifact(row.artifact_name))throw fail('download_not_ready',409);
-   if(!env.PAGAMENTO_ARTISYS_ARQUIVOS)throw fail('storage_not_configured',503);
-   const object=await env.PAGAMENTO_ARTISYS_ARQUIVOS.get('releases/'+row.artifact_name);
+  if((method==='GET'||method==='POST')&&ord[2]==='download'){
+   const release=artifactForPaidOrder(row);
+   if(row.status!=='paid'||row.fulfillment_status!=='delivered'||row.delivery_mode!=='download'||!release)throw fail('download_not_ready',409);
+   const checked=await verifyStoredRelease(env,release);
+   if(!checked.verified)throw fail('artifact_not_verified',409);
+   const object=await env.PAGAMENTO_ARTISYS_ARQUIVOS.get(release.key);
    if(!object)throw fail('artifact_missing',404);
-   return new Response(object.body,{headers:{...headers,'content-type':'application/octet-stream','content-disposition':'attachment; filename="'+row.artifact_name+'"','cache-control':'no-store','x-content-type-options':'nosniff'}});
+   return new Response(object.body,{headers:{...headers,'content-type':'application/octet-stream','content-disposition':'attachment; filename="'+release.fileName+'"','cache-control':'private, no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'}});
   }
   if(method==='POST'&&ord[2]==='checkout'){
    if(!allowedOrigin)throw fail('origin_not_allowed',403);
+   if(env.PAYMENTS_ENABLED!=='true')throw fail('payments_not_enabled',503);
    const v=isObj(await read(request)),provider=String(v.provider||'');
    if(!['asaas','manual_pix'].includes(provider))throw fail('invalid_provider');
    if(row.status!=='pending'||['canceled','expired'].includes(row.checkout_state))throw fail('order_not_payable',409);
