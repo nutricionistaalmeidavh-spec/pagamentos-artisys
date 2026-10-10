@@ -94,9 +94,16 @@ async function catalog(){
     el('show-order').addEventListener('click',()=>showOrder(orderId,code));
     const checkout=await api('/v1/orders/'+orderId+'/checkout','POST',{provider:f.get('provider'),paymentMethod:'default'},code);
     const result=el('checkout-result');
-    if(result)result.innerHTML=checkout.checkoutUrl
-      ?'<p><a class="primary" href="'+esc(checkout.checkoutUrl)+'" rel="noreferrer">Prosseguir para pagamento</a></p>'
-      :'<p>Pix manual: liberação somente após confirmação administrativa.</p><p>Chave Pix: <strong>'+esc(checkout.manualPixKey||'')+'</strong></p>';
+    if(checkout.checkoutUrl){
+      // O checkout válido foi persistido no servidor. Mantém o link como fallback
+      // para navegadores que impedem a troca automática de domínio.
+      if(result)result.innerHTML='<p>Redirecionando para o pagamento seguro do Asaas…</p>'+
+        '<p><a class="primary" href="'+esc(checkout.checkoutUrl)+'" rel="noreferrer">Abrir pagamento no Asaas</a></p>';
+      location.assign(checkout.checkoutUrl);
+      return;
+    }
+    if(result)result.innerHTML='<p>Pix manual: liberação somente após confirmação administrativa.</p>'+
+      '<p>Chave Pix: <strong>'+esc(checkout.manualPixKey||'')+'</strong></p>';
    }catch(e){
     notify(e);
     const orderId=new URLSearchParams(location.search).get('id'),code=orderId?saved(orderId):'';

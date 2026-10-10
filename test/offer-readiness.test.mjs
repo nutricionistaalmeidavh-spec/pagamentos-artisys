@@ -234,3 +234,89 @@ test('Pix permanece disponível por padrão, pode ser desabilitado explicitament
  assert.deepEqual(captured[2].billingTypes,['CREDIT_CARD']);
  assert.equal(captured[0].callback.successUrl,'https://checkout.example/pedido?id='+order.id);
 });
+
+test('Asaas HTTP 200 somente com id cria URL canônica e persiste checkout sem gerar cobrança duplicada',async()=>{
+ const env=setup(),context=ctx();
+ env.PAYMENTS_ENABLED='true';env.ASAAS_API_KEY='fake-token';
+ env.ASAAS_API_BASE_URL='https://api.asaas.com/v3';
+ env.ASAAS_WEBHOOK_TOKEN='local-test-webhook-token-0123456789abcdef';
+ env.PUBLIC_BASE_URL='https://checkout.example/';
+ await call(env,'/healthz');
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("INSERT INTO offers(id,product_id,name,price_cents,currency,sale_type,delivery_mode,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)")
+  .run('kit-canonical-url','kit-canonical-url','Kit QA',3853,'BRL','one_time','manual',new Date().toISOString(),new Date().toISOString());
+ const created=await call(env,'/v1/orders','POST',{offerId:'kit-canonical-url',email:'test@example.com',idempotencyKey:randomUUID()+'-'+randomUUID()},'',context);
+ assert.equal(created.status,201);
+ const {id}=created.data.order,code=created.data.orderAccessToken,checkoutId=randomUUID();
+ const oldFetch=globalThis.fetch;let calls=0;
+ try{
+  globalThis.fetch=async (_url,init)=>{
+   calls++;
+   assert.equal(init.method,'POST');
+   // Resposta real da API: somente id. Qualquer link extra jamais é necessário.
+   return new Response(JSON.stringify({id:checkoutId,link:'https://www.asaas.com/untrusted-legacy-path'}),{status:200,headers:{'content-type':'application/json'}});
+  };
+  const checkout=await call(env,'/v1/orders/'+id+'/checkout','POST',{provider:'asaas'},code,context);
+  assert.equal(checkout.status,200,JSON.stringify(checkout.data));
+  const expected='https://asaas.com/checkoutSession/show?id='+checkoutId;
+  assert.equal(checkout.data.checkoutUrl,expected);
+  assert.equal(checkout.data.order.checkoutState,'ready');
+  const stored=env.PAGAMENTO_ARTISYS_DB.raw.prepare('SELECT checkout_id,checkout_url,checkout_state,status FROM orders WHERE id=?').get(id);
+  assert.equal(stored.checkout_id,checkoutId);assert.equal(stored.checkout_url,expected);
+  assert.equal(stored.checkout_state,'ready');assert.equal(stored.status,'pending');
+  const repeated=await call(env,'/v1/orders/'+id+'/checkout','POST',{provider:'asaas'},code,context);
+  assert.equal(repeated.status,200);assert.equal(repeated.data.checkoutUrl,expected);
+  assert.equal(calls,1,'retry never creates another checkout after success');
+ }finally{globalThis.fetch=oldFetch;}
+});
+
+test('Webhook autenticado repara checkout órfão apenas com referência, callbacks e valor corretos',async()=>{
+ const env=setup(),context=ctx();
+ env.PAYMENTS_ENABLED='true';env.ASAAS_API_KEY='fake-key';
+ env.ASAAS_API_BASE_URL='https://api.asaas.com/v3';
+ env.ASAAS_WEBHOOK_TOKEN='long-local-test-webhook-token-0123456789abcdef';
+ env.PUBLIC_BASE_URL='https://checkout.example/';
+ await call(env,'/healthz');
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("INSERT INTO offers(id,product_id,name,price_cents,currency,sale_type,delivery_mode,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)")
+  .run('kit-event-recover','kit-event-recover','Kit QA',3853,'BRL','one_time','manual',new Date().toISOString(),new Date().toISOString());
+ const created=await call(env,'/v1/orders','POST',{offerId:'kit-event-recover',email:'test@example.com',idempotencyKey:randomUUID()+'-'+randomUUID()},'',context);
+ assert.equal(created.status,201);
+ const {id}=created.data.order,code=created.data.orderAccessToken;
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("UPDATE orders SET checkout_state='verifying',payment_provider='asaas' WHERE id=?").run(id);
+ const returnUrl='https://checkout.example/pedido?id='+id,checkoutId=randomUUID();
+ const event={id:'evt_'+randomUUID().replaceAll('-',''),event:'CHECKOUT_CREATED',
+  checkout:{id:checkoutId,status:'ACTIVE',externalReference:id,minutesToExpire:60,
+   callback:{successUrl:returnUrl,cancelUrl:returnUrl,expiredUrl:returnUrl},
+   items:[{name:'Kit QA',quantity:1,value:38.53}]}};
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("INSERT INTO provider_events(id,event_type,payload,status,received_at) VALUES(?,?,?,'failed',?)")
+  .run(event.id,event.event,JSON.stringify(event),new Date().toISOString());
+ const replay=await call(env,'/v1/admin/events/'+event.id+'/replay','POST',{},ADMIN,context);
+ assert.equal(replay.status,202,JSON.stringify(replay.data));
+ await context.flush();
+ const order=(await call(env,'/v1/orders/'+id,'GET',null,code)).data.order;
+ assert.equal(order.checkoutState,'ready');
+ assert.equal(order.checkoutUrl,'https://asaas.com/checkoutSession/show?id='+checkoutId);
+ assert.equal(order.status,'pending');
+ assert.equal(env.PAGAMENTO_ARTISYS_DB.raw.prepare('SELECT status FROM provider_events WHERE id=?').get(event.id).status,'processed');
+ assert.equal(env.PAGAMENTO_ARTISYS_DB.raw.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE kind='checkout_recovered_from_webhook' AND subject_id=?").get(id).n,1);
+});
+
+test('Webhook de checkout órfão com valor inválido não estabelece vínculo financeiro',async()=>{
+ const env=setup(),context=ctx();
+ env.PAYMENTS_ENABLED='true';env.ASAAS_API_KEY='fake-key';env.PUBLIC_BASE_URL='https://checkout.example/';
+ await call(env,'/healthz');
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("INSERT INTO offers(id,product_id,name,price_cents,currency,sale_type,delivery_mode,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)")
+  .run('kit-event-mismatch','kit-event-mismatch','Kit QA',3853,'BRL','one_time','manual',new Date().toISOString(),new Date().toISOString());
+ const created=await call(env,'/v1/orders','POST',{offerId:'kit-event-mismatch',email:'test@example.com',idempotencyKey:randomUUID()+'-'+randomUUID()},'',context);
+ const {id}=created.data.order;
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("UPDATE orders SET checkout_state='verifying',payment_provider='asaas' WHERE id=?").run(id);
+ const target='https://checkout.example/pedido?id='+id;
+ const event={id:'evt_'+randomUUID().replaceAll('-',''),event:'CHECKOUT_CREATED',
+ checkout:{id:randomUUID(),status:'ACTIVE',callback:{successUrl:target,cancelUrl:target,expiredUrl:target},
+ items:[{quantity:1,value:99.99}]}};
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("INSERT INTO provider_events(id,event_type,payload,status,received_at) VALUES(?,?,?,'failed',?)")
+ .run(event.id,event.event,JSON.stringify(event),new Date().toISOString());
+ const replay=await call(env,'/v1/admin/events/'+event.id+'/replay','POST',{},ADMIN,context);assert.equal(replay.status,202);
+ await context.flush();
+ const order=env.PAGAMENTO_ARTISYS_DB.raw.prepare('SELECT checkout_id,checkout_url,checkout_state FROM orders WHERE id=?').get(id);
+ assert.equal(order.checkout_id,null);assert.equal(order.checkout_url,null);assert.equal(order.checkout_state,'verifying');
+});
