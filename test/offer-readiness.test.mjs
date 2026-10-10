@@ -216,3 +216,21 @@ test('Asaas desconhecido continua em conciliação, não autoriza novo checkout'
   assert.equal(repeat.status,409);assert.equal(repeat.data.error,'checkout_requires_reconciliation');
  }finally{globalThis.fetch=previousFetch;}
 });
+
+test('Pix permanece disponível por padrão, pode ser desabilitado explicitamente sem chave e cartão segue disponível',async()=>{
+ const {createCheckout}=await import('../src/asaas.mjs');
+ const order={id:'11111111-1111-4111-8111-111111111111',sale_type:'one_time',amount_cents:3853};
+ const offer={name:'Kit QA',description:'Verificação segura'};
+ const bases={ASAAS_API_KEY:'fake',ASAAS_API_BASE_URL:'https://api-sandbox.asaas.com/v3',PUBLIC_BASE_URL:'https://checkout.example/'};
+ const captured=[];
+ const provider=async(_url,init)=>{captured.push(JSON.parse(init.body));return new Response(JSON.stringify({
+  id:'checkout_test_flag_01',link:'https://sandbox.asaas.com/checkoutSession/show/checkout_test_flag_01'
+ }),{status:200,headers:{'content-type':'application/json'}});};
+ await createCheckout(bases,provider,order,offer);
+ assert.deepEqual(captured[0].billingTypes,['PIX','CREDIT_CARD']);
+ await createCheckout({...bases,ASAAS_PIX_ENABLED:'false'},provider,order,offer);
+ assert.deepEqual(captured[1].billingTypes,['CREDIT_CARD']);
+ await createCheckout(bases,provider,order,offer,'credit_card');
+ assert.deepEqual(captured[2].billingTypes,['CREDIT_CARD']);
+ assert.equal(captured[0].callback.successUrl,'https://checkout.example/pedido?id='+order.id);
+});
