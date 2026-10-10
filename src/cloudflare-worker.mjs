@@ -239,7 +239,7 @@ function cors(req,env){
 }
 async function process(request,env,ctx){
  const path=new URL(request.url).pathname,method=request.method,d=env.PAGAMENTO_ARTISYS_DB,headers=cors(request,env);
- const allowedOrigin=!request.headers.get('origin')||Object.keys(headers).length>0;
+ const allowedOrigin=!request.headers.get('origin')||request.headers.get('origin')===new URL(request.url).origin||Object.keys(headers).length>0;
  const send=(data,status=200)=>json(data,status,headers);
  if(method==='OPTIONS')return new Response(null,{status:allowedOrigin?204:403,headers});
  if(method==='GET'&&path==='/healthz'){
