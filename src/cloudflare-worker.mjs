@@ -66,6 +66,16 @@ async function insertMissingCatalogDrafts(db){
  const created=result.reduce((sum,item)=>sum+Number(item?.meta?.changes||0),0);
  return {expected:CATALOG_DRAFTS.length,created,alreadyExisting:CATALOG_DRAFTS.length-created,active:false};
 }
+async function prepareSystemDrafts(db){
+ const results=[];
+ for(const [offerId] of SYSTEMS){
+  const first=defaultSystemVariant(offerId),artifact=first.key.slice('releases/'.length);
+  const changed=await exec(db,"UPDATE offers SET delivery_mode='download',artifact_name=?,updated_at=? WHERE id=? AND active=0 AND delivery_mode='manual' AND (artifact_name IS NULL OR artifact_name='')",artifact,now(),offerId);
+  results.push({id:offerId,updated:Number(changed.meta?.changes||0)});
+ }
+ if(results.some(x=>x.updated))await audit(db,'download_offers_prepared','four_systems',results);
+ return results;
+}
 async function initialCatalogImport(env){
  const db=env.PAGAMENTO_ARTISYS_DB;
  const done=await one(db,"SELECT id FROM audit_logs WHERE kind='catalog_seed_completed' AND subject_id=? LIMIT 1",CATALOG_SOURCE);
@@ -369,13 +379,7 @@ async function process(request,env,ctx){
     manualPixConfigured:!!env.MANUAL_PIX_KEY,licensesApproved:approved.size});
   }
   if(method==='POST'&&path==='/v1/admin/prepare-download-offers'){
-   const results=[];
-   for(const [offerId] of SYSTEMS){
-    const first=defaultSystemVariant(offerId),artifact=first.key.slice('releases/'.length);
-    const changed=await exec(d,"UPDATE offers SET delivery_mode='download',artifact_name=?,updated_at=? WHERE id=? AND active=0 AND delivery_mode='manual' AND (artifact_name IS NULL OR artifact_name='')",artifact,now(),offerId);
-    results.push({id:offerId,updated:Number(changed.meta?.changes||0)});
-   }
-   await audit(d,'download_offers_prepared','four_systems',results);
+   const results=await prepareSystemDrafts(d);
    return send({results,published:false,paymentsEnabled:env.PAYMENTS_ENABLED==='true'});
   }
   if(method==='POST'&&path==='/v1/admin/review-devkit-license'){
@@ -481,6 +485,6 @@ export default {
  },
  async scheduled(event,env,ctx){
   ctx.waitUntil((async()=>{await initialize(env);await reconcilePending(env);await queueWorker(env);})().catch(e=>console.error('scheduled_error',String(e.message).slice(0,120))));
-  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
+  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);await prepareSystemDrafts(env.PAGAMENTO_ARTISYS_DB);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
  }
 };
