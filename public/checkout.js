@@ -69,16 +69,17 @@ async function catalog(){
     });
     const orderId=created.order.id,code=created.orderAccessToken;
     store(orderId,code);
-    const checkout=await api('/v1/orders/'+orderId+'/checkout','POST',{provider:f.get('provider')},code);
     history.replaceState(null,'','/pedido?id='+encodeURIComponent(orderId));
     el('content').innerHTML='<h2>Pedido criado</h2><p>Pedido: <strong>'+esc(orderId)+'</strong></p>'+
-      accessPanel(orderId,code)+
-      (checkout.checkoutUrl?'<p><a class="primary" href="'+esc(checkout.checkoutUrl)+'" rel="noreferrer">Prosseguir para pagamento</a></p>':
-      '<p>Pagamento por Pix manual. A entrega será liberada após confirmação administrativa.</p>'+
-      '<p>Chave Pix: <strong>'+esc(checkout.manualPixKey||'')+'</strong></p>')+
+      accessPanel(orderId,code)+'<div id="checkout-result"><p>Preparando checkout…</p></div>'+
       '<p><button class="secondary" id="show-order" type="button">Consultar pedido</button></p>';
     copyAccess(code);
-    el('show-order').addEventListener('click',()=>showOrder(orderId,code,checkout.manualPixKey));
+    el('show-order').addEventListener('click',()=>showOrder(orderId,code));
+    const checkout=await api('/v1/orders/'+orderId+'/checkout','POST',{provider:f.get('provider')},code);
+    const result=el('checkout-result');
+    if(result)result.innerHTML=checkout.checkoutUrl
+      ?'<p><a class="primary" href="'+esc(checkout.checkoutUrl)+'" rel="noreferrer">Prosseguir para pagamento</a></p>'
+      :'<p>Pix manual: liberação somente após confirmação administrativa.</p><p>Chave Pix: <strong>'+esc(checkout.manualPixKey||'')+'</strong></p>';
    }catch(e){notify(e);}finally{button.disabled=false;}
   });
  }catch(e){notify(e);}
