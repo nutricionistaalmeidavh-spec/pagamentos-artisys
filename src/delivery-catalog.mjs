@@ -63,6 +63,8 @@ export async function verifyStoredRelease(env,release){
 }
 export async function downloadReadiness(env,offer,approvedKits=new Set()){
  if(offer.delivery_mode!=='download')return {ready:false,reason:'delivery_not_download',variants:[]};
+ if(SYSTEMS.has(offer.id)&&offer.product_id!==offer.id)
+  return {ready:false,reason:'product_release_mismatch',variants:[]};
  let candidates;
  try{
   const systems=SYSTEMS.get(offer.id);
