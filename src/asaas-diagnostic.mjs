@@ -24,7 +24,7 @@ function safeProviderStatus(error){
 }
 function providerHttpCode(error){
  const match=/^asaas_http_([0-9]{3})$/.exec(String(error?.message||''));
- return match?Number(match[1]):null;
+ return match?Number(match[1]):Number.isInteger(error?.httpStatus)?error.httpStatus:null;
 }
 function webhookEndpoint(url){
  try{
