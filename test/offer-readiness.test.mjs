@@ -146,3 +146,91 @@ test('catálogo público expõe apenas ofertas ativas com CORS de leitura; admin
  assert.equal(admin.status,401);
  assert.notEqual(admin.response.headers.get('access-control-allow-origin'),'*');
 });
+
+test('Asaas HTTP 400 Pix ausente é rejeição conclusiva; permite reusar o mesmo pedido com cartão e callback correto',async()=>{
+ const env=setup(),context=ctx();
+ env.PAYMENTS_ENABLED='true';
+ env.ASAAS_API_KEY='asaas-fake-key-for-local-mock';
+ env.ASAAS_WEBHOOK_TOKEN='local-test-webhook-token-0123456789abcdef';
+ env.ASAAS_PIX_ENABLED='true';
+ env.PUBLIC_BASE_URL='https://checkout.example/'; // reproduz URL com barra final na configuração.
+ await call(env,'/healthz');
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("INSERT INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,1,?,?)")
+ .run('artisys-test-pay','artisys-test-pay','Kit QA de checkout','Produto simulado',3853,'BRL','one_time','manual',new Date().toISOString(),new Date().toISOString());
+ const customer=await call(env,'/v1/orders','POST',{offerId:'artisys-test-pay',email:'test@example.com',name:'QA',
+  idempotencyKey:randomUUID()+'-'+randomUUID()},'',context);
+ assert.equal(customer.status,201,JSON.stringify(customer.data));
+ const {id}=customer.data.order,code=customer.data.orderAccessToken;
+ const previousFetch=globalThis.fetch,requests=[];
+ try{
+  globalThis.fetch=async (url,init)=>{
+   const payload=JSON.parse(init.body);requests.push({url,payload});
+   assert.ok(String(url).endsWith('/v3/checkouts'));
+   if(requests.length===1)return new Response(JSON.stringify({errors:[{code:'invalid_object',
+    description:'Para gerar cobranças com Pix é necessário criar uma chave Pix no Asaas.'}]}),{status:400,headers:{'content-type':'application/json'}});
+   return new Response(JSON.stringify({id:'checkout_test_001',link:'https://sandbox.asaas.com/checkoutSession/show/checkout_test_001'}),{status:200,headers:{'content-type':'application/json'}});
+  };
+  const first=await call(env,'/v1/orders/'+id+'/checkout','POST',{provider:'asaas'},code,context);
+  assert.equal(first.status,409,JSON.stringify(first.data));
+  assert.equal(first.data.error,'asaas_pix_key_required');
+  assert.deepEqual(requests[0].payload.billingTypes,['PIX','CREDIT_CARD']);
+  assert.equal(requests[0].payload.callback.successUrl,'https://checkout.example/pedido?id='+id);
+  assert.equal(requests[0].payload.callback.cancelUrl,requests[0].payload.callback.successUrl);
+  assert.equal(requests[0].payload.callback.expiredUrl.includes('//pedido'),false);
+  const rejected=env.PAGAMENTO_ARTISYS_DB.raw.prepare('SELECT payment_provider,checkout_state,checkout_id,status FROM orders WHERE id=?').get(id);
+  assert.equal(rejected.checkout_state,'not_started');
+  assert.equal(rejected.payment_provider,null);
+  assert.equal(rejected.checkout_id,null);
+  assert.equal(rejected.status,'pending');
+  const audited=env.PAGAMENTO_ARTISYS_DB.raw.prepare("SELECT details FROM audit_logs WHERE kind='checkout_rejected' AND subject_id=?").get(id);
+  assert.equal(JSON.parse(audited.details).code,'asaas_pix_key_required');
+  const second=await call(env,'/v1/orders/'+id+'/checkout','POST',{provider:'asaas',paymentMethod:'credit_card'},code,context);
+  assert.equal(second.status,200,JSON.stringify(second.data));
+  assert.deepEqual(requests[1].payload.billingTypes,['CREDIT_CARD']);
+  assert.equal(second.data.order.checkoutState,'ready');
+  assert.equal(second.data.order.paymentProvider,'asaas');
+  assert.equal((await call(env,'/v1/orders/'+id,'GET',null,code)).data.order.status,'pending');
+  const third=await call(env,'/v1/orders/'+id+'/checkout','POST',{provider:'asaas',paymentMethod:'credit_card'},code,context);
+  assert.equal(third.status,200);
+  assert.equal(requests.length,2,'checkout pronto não cria checkout duplicado');
+ }finally{globalThis.fetch=previousFetch;}
+});
+test('Asaas desconhecido continua em conciliação, não autoriza novo checkout',async()=>{
+ const env=setup(),context=ctx();env.PAYMENTS_ENABLED='true';env.ASAAS_API_KEY='test';
+ env.ASAAS_WEBHOOK_TOKEN='local-test-webhook-token-0123456789abcdef';
+ env.PUBLIC_BASE_URL='https://checkout.example/';
+ await call(env,'/healthz');
+ env.PAGAMENTO_ARTISYS_DB.raw.prepare("INSERT INTO offers(id,product_id,name,price_cents,currency,sale_type,delivery_mode,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)")
+ .run('artisys-test-unknown','artisys-test-unknown','Kit QA',3853,'BRL','one_time','manual',new Date().toISOString(),new Date().toISOString());
+ const created=await call(env,'/v1/orders','POST',{offerId:'artisys-test-unknown',email:'test@example.com',
+  idempotencyKey:randomUUID()+'-'+randomUUID()},'',context);
+ assert.equal(created.status,201);
+ const {id}=created.data.order,code=created.data.orderAccessToken;
+ const previousFetch=globalThis.fetch;
+ try{
+  globalThis.fetch=async()=>{throw Error('network_timeout_after_request');};
+  const failed=await call(env,'/v1/orders/'+id+'/checkout','POST',{provider:'asaas'},code,context);
+  assert.equal(failed.status,502);assert.equal(failed.data.error,'checkout_requires_reconciliation');
+  assert.equal((await call(env,'/v1/orders/'+id,'GET',null,code)).data.order.checkoutState,'verifying');
+  const repeat=await call(env,'/v1/orders/'+id+'/checkout','POST',{provider:'asaas',paymentMethod:'credit_card'},code,context);
+  assert.equal(repeat.status,409);assert.equal(repeat.data.error,'checkout_requires_reconciliation');
+ }finally{globalThis.fetch=previousFetch;}
+});
+
+test('Pix permanece disponível por padrão, pode ser desabilitado explicitamente sem chave e cartão segue disponível',async()=>{
+ const {createCheckout}=await import('../src/asaas.mjs');
+ const order={id:'11111111-1111-4111-8111-111111111111',sale_type:'one_time',amount_cents:3853};
+ const offer={name:'Kit QA',description:'Verificação segura'};
+ const bases={ASAAS_API_KEY:'fake',ASAAS_API_BASE_URL:'https://api-sandbox.asaas.com/v3',PUBLIC_BASE_URL:'https://checkout.example/'};
+ const captured=[];
+ const provider=async(_url,init)=>{captured.push(JSON.parse(init.body));return new Response(JSON.stringify({
+  id:'checkout_test_flag_01',link:'https://sandbox.asaas.com/checkoutSession/show/checkout_test_flag_01'
+ }),{status:200,headers:{'content-type':'application/json'}});};
+ await createCheckout(bases,provider,order,offer);
+ assert.deepEqual(captured[0].billingTypes,['PIX','CREDIT_CARD']);
+ await createCheckout({...bases,ASAAS_PIX_ENABLED:'false'},provider,order,offer);
+ assert.deepEqual(captured[1].billingTypes,['CREDIT_CARD']);
+ await createCheckout(bases,provider,order,offer,'credit_card');
+ assert.deepEqual(captured[2].billingTypes,['CREDIT_CARD']);
+ assert.equal(captured[0].callback.successUrl,'https://checkout.example/pedido?id='+order.id);
+});
