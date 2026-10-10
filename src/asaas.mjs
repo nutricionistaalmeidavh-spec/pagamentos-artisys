@@ -52,7 +52,7 @@ export async function createCheckout(env, fetchImpl, order, offer, paymentMethod
   const returnUrl=new URL('/pedido?id='+encodeURIComponent(order.id),env.PUBLIC_BASE_URL).href;
   const body = {
     externalReference: order.id,
-    billingTypes: recurring || paymentMethod==='credit_card' || env.ASAAS_PIX_ENABLED!=='true' ? ['CREDIT_CARD'] : ['PIX', 'CREDIT_CARD'],
+    billingTypes: recurring || paymentMethod==='credit_card' || env.ASAAS_PIX_ENABLED==='false' ? ['CREDIT_CARD'] : ['PIX', 'CREDIT_CARD'],
     chargeTypes: recurring ? ['RECURRENT'] : ['DETACHED'],
     minutesToExpire: 60,
     callback: {
