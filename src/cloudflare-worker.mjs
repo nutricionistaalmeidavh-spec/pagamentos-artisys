@@ -2,6 +2,7 @@ import {createCheckout,verifyCheckoutPayment,verifyPaymentEvent} from './asaas.m
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
+import {devkitReleaseAdmin} from './devkit-release-admin.mjs';
 import {verifyReleaseGithubOidc} from './github-oidc.mjs';
 
 const schema=[
@@ -220,7 +221,7 @@ async function process(request,env,ctx){
  if(method==='GET'&&path==='/healthz'){
   await initialize(env);
   const count=await one(d,"SELECT COUNT(*) AS total FROM offers WHERE id IN ("+CATALOG_DRAFTS.map(()=>'?').join(',')+")",...CATALOG_DRAFTS.map(x=>x.id));
-  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67,releaseSyncAuth:'github-oidc-v2'});
+  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67,releaseSyncAuth:'github-oidc-v2',devkitSyncAuth:'github-oidc-devkits-v1'});
  }
  if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
   const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
@@ -308,10 +309,14 @@ async function process(request,env,ctx){
  }
  if(path.startsWith('/v1/admin/')){
   const releaseRoute=path==='/v1/admin/system-releases'||path.startsWith('/v1/admin/system-releases/');
-  // OIDC grants ONLY the release-binary API; all other admin paths require ADMIN_TOKEN.
-  const githubVerified=releaseRoute&&await verifyReleaseGithubOidc(request,fetch);
+  const devkitRoute=path==='/v1/admin/devkit-releases'||path.startsWith('/v1/admin/devkit-releases/');
+  // Signed OIDC is scoped to its exact workflow AND endpoint; financial admin still needs ADMIN_TOKEN.
+  const githubVerified=releaseRoute
+   ? await verifyReleaseGithubOidc(request,fetch)
+   : devkitRoute ? await verifyReleaseGithubOidc(request,fetch,Math.floor(Date.now()/1000),'devkits') : false;
   if(!githubVerified)await admin(request,env);
   if(releaseRoute)return systemReleaseAdmin(request,env,{githubVerified});
+  if(devkitRoute)return devkitReleaseAdmin(request,env,{githubVerified});
   if(method==='GET'&&path==='/v1/admin/asaas/diagnostic')return send(await diagnoseAsaas(env,fetch));
   if(method==='GET'&&path==='/v1/admin/summary'){
    const summary=await one(d,"SELECT count(*) AS orders,coalesce(sum(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) AS receivedCents,sum(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN status='refunded' THEN 1 ELSE 0 END) AS refunded FROM orders");
