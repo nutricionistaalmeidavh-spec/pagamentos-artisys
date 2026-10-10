@@ -4,6 +4,7 @@ import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
 import {devkitReleaseAdmin} from './devkit-release-admin.mjs';
 import {verifyReleaseGithubOidc} from './github-oidc.mjs';
+import {SYSTEMS,defaultSystemVariant,systemVariants,resolveOrderArtifact,artifactForPaidOrder,downloadReadiness,verifyStoredRelease,isDevkit,KITS_BY_ARTIFACT} from './delivery-catalog.mjs';
 
 const schema=[
   "CREATE TABLE IF NOT EXISTS offers(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',price_cents INTEGER NOT NULL CHECK(price_cents>0),currency TEXT NOT NULL DEFAULT 'BRL',sale_type TEXT NOT NULL DEFAULT 'one_time',delivery_mode TEXT NOT NULL DEFAULT 'manual',artifact_name TEXT,active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
@@ -14,7 +15,8 @@ const schema=[
   "CREATE TABLE IF NOT EXISTS audit_logs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,subject_id TEXT NOT NULL,details TEXT NOT NULL,created_at TEXT NOT NULL)",
   "CREATE INDEX IF NOT EXISTS idx_events_pending ON provider_events(status,next_attempt_at)",
   "CREATE INDEX IF NOT EXISTS idx_jobs_pending ON fulfillments(status,next_attempt_at)",
-  "CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(status,created_at)"
+  "CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(status,created_at)",
+  "CREATE TABLE IF NOT EXISTS release_approvals(artifact_name TEXT PRIMARY KEY,approved_at TEXT NOT NULL,review_note TEXT NOT NULL)"
 ];
 const now=()=>new Date().toISOString(),uuid=()=>crypto.randomUUID();
 const json=(value,status=200,headers={})=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff',...headers}});
@@ -33,7 +35,13 @@ const safeEqual=async (a,b)=>{
  return diff===0;
 };
 const selection={id:'id',offerId:'offer_id',productId:'product_id',amountCents:'amount_cents',currency:'currency',saleType:'sale_type',status:'status',paymentProvider:'payment_provider',checkoutUrl:'checkout_url',checkoutState:'checkout_state',fulfillmentStatus:'fulfillment_status',createdAt:'created_at'};
-const publicOrder=row=>row&&Object.fromEntries(Object.entries(selection).map(([k,v])=>[k,row[v]??null]));
+const publicOrder=row=>{
+ if(!row)return null;
+ const out=Object.fromEntries(Object.entries(selection).map(([k,v])=>[k,row[v]??null]));
+ const release=artifactForPaidOrder(row);
+ if(release){out.platform=release.platform||'Código-fonte';out.version=release.version||null;out.downloadName=release.fileName;}
+ return out;
+};
 const query=(db,sql,...args)=>db.prepare(sql).bind(...args);
 let readyDb=null,readyPromise=null;
 async function initialize(env){
@@ -70,9 +78,9 @@ async function admin(request,env){
  if(!env.ADMIN_TOKEN||env.ADMIN_TOKEN.length<32)throw fail('admin_not_configured',503);
  if(!await safeEqual(headerToken(request),env.ADMIN_TOKEN))throw fail('unauthorized',401);
 }
-async function authorizedOrder(request,env,id){
+async function authorizedOrder(request,env,id,accessCode=headerToken(request)){
  const found=await one(env.PAGAMENTO_ARTISYS_DB,'SELECT * FROM orders WHERE id=?',id);
- if(!found||!await safeEqual(await digest(headerToken(request)),found.access_hash))throw fail('order_not_found',404);
+ if(!found||!await safeEqual(await digest(accessCode),found.access_hash))throw fail('order_not_found',404);
  return found;
 }
 async function markPaid(env,order,origin,proof=null){
@@ -106,14 +114,20 @@ async function deliver(env,job){
   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='awaiting_manual',updated_at=? WHERE id=?",now(),job.id);
   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='awaiting_manual' WHERE id=?",order.id);return;
  }
+ if(job.action==='revoke'&&order.delivery_mode==='download'){
+  await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='delivered',last_error=NULL,updated_at=? WHERE id=?",now(),job.id);
+  await audit(env.PAGAMENTO_ARTISYS_DB,'download_access_revoked',order.id,{action:job.action});
+  return;
+ }
  if(job.action==='activate'&&order.delivery_mode==='download'){
-  if(!validArtifact(order.artifact_name)||!env.PAGAMENTO_ARTISYS_ARQUIVOS){
+  const release=artifactForPaidOrder(order);
+  if(!release||!env.PAGAMENTO_ARTISYS_ARQUIVOS){
    await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='r2_or_artifact_not_configured',updated_at=? WHERE id=?",now(),job.id);
    await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
   }
-  const obj=await env.PAGAMENTO_ARTISYS_ARQUIVOS.head('releases/'+order.artifact_name);
-  if(!obj){
-   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='artifact_not_found',updated_at=? WHERE id=?",now(),job.id);
+  const checked=await verifyStoredRelease(env,release);
+  if(!checked.verified){
+   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='artifact_not_verified',updated_at=? WHERE id=?",now(),job.id);
    await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
   }
  }else{
@@ -230,7 +244,7 @@ async function process(request,env,ctx){
  }
  if(!path.startsWith('/v1/'))return send({error:'not_found'},404);
  await initialize(env);
- if(method==='GET'&&path==='/v1/catalog')return send({offers:(await rows(d,"SELECT id,product_id,name,description,price_cents,currency,sale_type,delivery_mode FROM offers WHERE active=1 ORDER BY name")).map(x=>({id:x.id,productId:x.product_id,name:x.name,description:x.description,priceCents:x.price_cents,currency:x.currency,saleType:x.sale_type,deliveryMode:x.delivery_mode}))});
+ if(method==='GET'&&path==='/v1/catalog')return send({offers:(await rows(d,"SELECT id,product_id,name,description,price_cents,currency,sale_type,delivery_mode FROM offers WHERE active=1 ORDER BY name")).map(x=>({id:x.id,productId:x.product_id,name:x.name,description:x.description,priceCents:x.price_cents,currency:x.currency,saleType:x.sale_type,deliveryMode:x.delivery_mode,variants:systemVariants(x.id)}))});
  if(method==='POST'&&path==='/v1/orders'){
   if(!allowedOrigin)throw fail('origin_not_allowed',403);
   const v=isObj(await read(request)),email=String(v.email||'').trim().toLowerCase(),name=String(v.name||'').trim().slice(0,120);
@@ -242,12 +256,21 @@ async function process(request,env,ctx){
   if(existing)throw fail('idempotency_key_already_used',409);
   const code=String(v.couponCode||'').trim().toUpperCase(),discount=code?await one(d,'SELECT * FROM coupons WHERE code=? AND active=1',code):null;
   if(code&&!discount)throw fail('invalid_coupon');
+  let chosenArtifact=offer.artifact_name;
+  if(offer.delivery_mode==='download'){
+   let resolved;try{resolved=resolveOrderArtifact(offer,v.variantId||null);}catch(e){throw fail(e.message,400);}
+   const approvals=new Set((await rows(d,'SELECT artifact_name FROM release_approvals')).map(x=>x.artifact_name));
+   if(isDevkit(resolved.release)&&!approvals.has(resolved.artifactName))throw fail('license_review_pending',409);
+   const checked=await verifyStoredRelease(env,resolved.release);
+   if(!checked.verified||resolved.release.outdated)throw fail('artifact_not_verified',409);
+   chosenArtifact=resolved.artifactName;
+  }else if(v.variantId)throw fail('invalid_variant',400);
   const price=Math.max(1,Math.round(offer.price_cents*(100-(discount?.percent_off||0))/100));
   const secret=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(v=>v.toString(16).padStart(2,'0')).join('');
   const id=uuid(),t=now();
   try{
    await exec(d,"INSERT INTO orders(id,offer_id,product_id,customer_email,customer_name,amount_cents,original_amount_cents,coupon_code,currency,sale_type,delivery_mode,artifact_name,access_hash,idem_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    id,offer.id,offer.product_id,email,name,price,offer.price_cents,code||null,offer.currency,offer.sale_type,offer.delivery_mode,offer.artifact_name,await digest(secret),idem,t,t);
+    id,offer.id,offer.product_id,email,name,price,offer.price_cents,code||null,offer.currency,offer.sale_type,offer.delivery_mode,chosenArtifact,await digest(secret),idem,t,t);
   }catch(e){if(String(e.message).includes('UNIQUE'))throw fail('idempotency_key_already_used',409);throw e;}
   return send({order:publicOrder(await one(d,'SELECT * FROM orders WHERE id=?',id)),orderAccessToken:secret},201);
  }
