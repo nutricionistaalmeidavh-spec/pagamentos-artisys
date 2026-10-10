@@ -6,7 +6,7 @@ const icons={home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1
 const icon=name=>'<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[name]||icons.shield)+'</svg>';
 document.querySelectorAll('[data-icon]').forEach(n=>n.innerHTML=icon(n.dataset.icon));
 const key='artisys-payment-admin';
-let token=sessionStorage.getItem(key)||'',screen='inicio',filter='todos',orders=[],offers=[],coupons=[],summary=null,fulfillments=[],events=[],integrations=[],health=null,catalogStatus=null,offerDraft=null,lastFocus=null,modalMode='',busy=false;
+let token=sessionStorage.getItem(key)||'',screen='inicio',filter='todos',orders=[],offers=[],coupons=[],summary=null,fulfillments=[],events=[],integrations=[],health=null,catalogStatus=null,offerReadiness=null,offerDraft=null,lastFocus=null,modalMode='',busy=false;
 const validScreens=['inicio','pedidos','ofertas','mais'];
 const paymentsOnline=()=>health?.paymentsEnabled===true;
 const paymentLabel=status=>{
@@ -61,8 +61,8 @@ async function load(name=screen){
    orders=(await api('orders')).orders||[];renderOrders();
   }else if(name==='ofertas'){
    el('offers-list').innerHTML='<div class="loading">Atualizando ofertas…</div>';
-   const [a,c,h,s,cat]=await Promise.all([api('offers'),api('coupons'),publicStatus(),api('summary'),api('catalog-drafts/status')]);
-   offers=a.offers||[];coupons=c.coupons||[];health=h;integrations=s.integrations||[];catalogStatus=cat;renderOffers();
+   const [a,c,h,s,cat,r]=await Promise.all([api('offers'),api('coupons'),publicStatus(),api('summary'),api('catalog-drafts/status'),api('offer-readiness')]);
+   offers=a.offers||[];coupons=c.coupons||[];health=h;integrations=s.integrations||[];catalogStatus=cat;offerReadiness=r;renderOffers();
   }else if(name==='mais'){
    for(const id of ['integrations-content','events-content','fulfillments-content'])el(id).innerHTML='<div class="loading">Atualizando…</div>';
    const [s,h,e,f,releases]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments'),api('system-releases')]);
@@ -172,7 +172,14 @@ function renderOffers(){
  el('offers-info').innerHTML=!paymentsOnline()?'<div class="notice"><span>'+icon('shield')+'</span><div><strong>Publicação suspensa</strong><p>Cobranças estão desativadas. Crie e edite ofertas como rascunho; a publicação será liberada após verificação da operação.</p></div></div>':'';
  const pending=Number(catalogStatus?.missing||0);
  el('offers-info').innerHTML+=(pending>0?'<div class="surface ops-card"><div class="card-top"><strong>Catálogo da planilha</strong>'+label(['Faltam '+pending+' de 67','warn'])+'</div><p class="muted">63 Dev Kits e 4 sistemas ArtiSys. Importação preserva ofertas anteriores e mantém todas as novas como rascunho.</p><button class="secondary" type="button" id="import-catalog">Cadastrar ofertas faltantes</button></div>':'<div class="notice"><span>'+icon('package')+'</span><div><strong>Catálogo consolidado</strong><p>Os 67 itens da planilha constam no painel. Confira os dados e prepare as entregas antes de publicar.</p></div></div>');
- el('offers-list').innerHTML=offers.length?'<div class="cards">'+offers.map(o=>'<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+'</span><div><strong>'+esc(o.name)+'</strong><div class="small">'+esc(saleName(o.sale_type))+' · '+esc(deliveryName(o.delivery_mode))+'</div></div></div>'+label(o.active?['Publicada','ok']:['Rascunho',''])+'</div><div class="card-bottom"><span class="amount">'+money(o.price_cents)+'</span><button class="secondary" data-offer="'+esc(o.id)+'" type="button">Revisar →</button></div></article>').join('')+'</div>':empty('Seu catálogo começa aqui','Crie a primeira oferta. Ela ficará em rascunho até você revisar e publicar.','<button class="primary" type="button" data-new-offer>+ Nova oferta</button>');
+ const ready=offerReadiness?.offers?.filter(x=>x.ready)||[];
+ const draftSystems=offers.filter(x=>['obra-na-mao','pdv-artisys-restaurantes','pdv-nexus','artisys-sistema-financeiro'].includes(x.id));
+ el('offers-info').innerHTML+='<section class="surface ops-card"><div class="card-top"><strong>Arquivos para entrega</strong>'+
+  label([ready.length+' de '+offers.filter(x=>x.delivery_mode==='download').length+' downloads aprovados',ready.length?'info':'warn'])+'</div>'+
+  '<p>Arquivos no R2 são verificados por SHA-256. Dev Kits também exigem conferência de licenças e documentação antes da venda.</p>'+
+  (draftSystems.some(x=>!x.active&&x.delivery_mode==='manual')?'<button class="secondary" type="button" id="prepare-systems">Preparar downloads dos quatro sistemas</button>':'')+
+  '</section>';
+ el('offers-list').innerHTML=offers.length?'<div class="cards">'+offers.map(o=>'<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+'</span><div><strong>'+esc(o.name)+'</strong><div class="small">'+esc(saleName(o.sale_type))+' · '+esc(deliveryName(o.delivery_mode))+'</div></div></div>'+label(o.active?['Publicada','ok']:offerReadiness?.offers?.find(x=>x.id===o.id)?.ready?['Arquivo validado','ok']:['Rascunho',''])+'</div><div class="card-bottom"><span class="amount">'+money(o.price_cents)+'</span><button class="secondary" data-offer="'+esc(o.id)+'" type="button">Revisar →</button></div></article>').join('')+'</div>':empty('Seu catálogo começa aqui','Crie a primeira oferta. Ela ficará em rascunho até você revisar e publicar.','<button class="primary" type="button" data-new-offer>+ Nova oferta</button>');
  el('coupons-list').innerHTML=coupons.length?'<div class="surface ops-card">'+coupons.map(c=>'<div class="card-bottom" style="margin:0;padding:10px 0"><span><strong>'+esc(c.code)+'</strong><span class="small"> · '+esc(c.percent_off)+'% de desconto</span></span>'+label(c.active?['Ativo','ok']:['Inativo',''])+'</div>').join('')+'</div>':empty('Nenhum cupom cadastrado','Se precisar de uma promoção, crie um cupom para calcular o desconto no servidor.');
 }
 function renderMore(){
@@ -235,6 +242,7 @@ function orderActions(o){
  if(o.paymentProvider==='manual_pix'&&o.status==='pending')out.push('<button class="primary full" data-op="confirm-manual" data-id="'+esc(o.id)+'" type="button">Confirmar recebimento do Pix manual</button>');
  if(o.fulfillmentStatus==='awaiting_manual'&&o.status==='paid')out.push('<button class="primary full" data-op="deliver-manual" data-id="'+esc(o.id)+'" type="button">Confirmar entrega manual</button>');
  if(o.paymentProvider==='asaas'&&o.checkoutState==='verifying')out.push('<button class="secondary full" data-op="reconcile" data-id="'+esc(o.id)+'" type="button">Consultar pagamento no Asaas</button>');
+ if(o.status==='paid')out.push('<button class="secondary full" data-rotate-access="'+esc(o.id)+'" type="button">Reemitir código de acesso ao comprador</button>');
  return out.join('<div class="section-divider"></div>');
 }
 function openOrder(id){
@@ -257,19 +265,78 @@ function confirmAction(title,text,action,kind='orders'){
   closeModal();toast('Operação confirmada no servidor.');await load(action.after||'pedidos');
  }));
 }
+function prepareSystems(){
+ openModal('Preparar downloads','<p>Configurar os quatro sistemas como downloads protegidos, preservando preços, pedidos e status de rascunho.</p>'+
+  '<p>Nenhuma cobrança ou oferta será ativada.</p><div class="form-actions"><button class="secondary" data-close>Cancelar</button>'+
+  '<button id="confirm-prepare" class="primary" type="button">Preparar quatro sistemas</button></div>');
+ el('confirm-prepare').addEventListener('click',async e=>withBusy(e.currentTarget,async()=>{
+  const r=await api('prepare-download-offers','POST',{});
+  closeModal();toast('Preparação concluída: '+r.results.filter(x=>x.updated).length+' oferta(s) ajustada(s).');
+  await load('ofertas');
+ }));
+}
+function licenseReview(file){
+ const slug=file.replace(/-v[0-9]+\.[0-9]+\.[0-9]+\.zip$/,'');
+ const href='https://github.com/nutricionistaalmeidavh-spec/DevKitTools/tree/main/kits/'+encodeURIComponent(slug);
+ openModal('Conferência comercial do Dev Kit','<p><strong>'+esc(file)+'</strong></p>'+
+  '<p>Antes de homologar, confira titularidade do código, dependências de terceiros, atribuições, termos comerciais e documentação.</p>'+
+  '<p><a href="'+href+'" target="_blank" rel="noopener noreferrer">Abrir documentação e licenças deste kit no GitHub</a></p>'+
+  '<form id="license-form" class="form-stack"><label><input type="checkbox" name="licenses" required> Conferi licenças, direitos de distribuição e NOTICEs</label>'+
+  '<label><input type="checkbox" name="documentation" required> Conferi documentação e conteúdo entregue</label>'+
+  '<label>Digite a confirmação <strong>CONFIRMO LICENCAS E DOCUMENTACAO</strong><input name="confirm" required autocomplete="off"></label>'+
+  '<div class="form-actions"><button class="secondary" data-close type="button">Cancelar</button>'+
+  '<button class="primary" type="submit">Registrar revisão (sem publicar)</button></div></form>');
+ el('license-form').addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.currentTarget,d=new FormData(form);
+  await withBusy(form.querySelector('[type="submit"]'),async()=>{
+   await api('review-devkit-license','POST',{artifactName:file,approved:true,licensesChecked:d.has('licenses'),
+    documentationChecked:d.has('documentation'),confirm:String(d.get('confirm')||'')});
+   closeModal();toast('Revisão registrada. Oferta continua como rascunho.');await load('ofertas');
+  });
+ });
+}
+function rotateAccess(orderId){
+ const order=orders.find(x=>x.id===orderId);if(!order||order.status!=='paid')return;
+ openModal('Reemitir código de acesso','<p>Esta operação invalida o código anterior e gera um novo. Verifique a identidade do comprador por um canal confiável antes de enviá-lo.</p>'+
+ '<div class="form-actions"><button class="secondary" data-close type="button">Cancelar</button>'+
+ '<button id="confirm-rotate" class="primary" type="button">Gerar novo código</button></div>');
+ el('confirm-rotate').addEventListener('click',async e=>withBusy(e.currentTarget,async()=>{
+  const r=await api('orders/'+encodeURIComponent(orderId)+'/rotate-access','POST',{});
+  openModal('Novo código — exibido uma única vez','<p>Pedido: '+esc(r.orderId)+'</p>'+
+   '<p>Envie somente após confirmar a identidade do comprador. Código anterior invalidado.</p>'+
+   '<code style="overflow-wrap:anywhere">'+esc(r.orderAccessToken)+'</code>'+
+   '<div class="form-actions"><button id="copy-rotated" class="secondary" type="button">Copiar código</button>'+
+   '<button data-close class="primary" type="button">Concluir</button></div>');
+  el('copy-rotated').addEventListener('click',async e=>{
+   try{await navigator.clipboard.writeText(r.orderAccessToken);e.currentTarget.textContent='Copiado';}
+   catch{showError(Error('Copie o código exibido manualmente.'));}
+  });
+ }));
+}
 function openOffer(id){
  const o=offers.find(x=>x.id===id);if(!o)return;
  const block=publicationBlock(o);
  openModal('Revisar oferta','<span class="eyebrow">'+(o.active?'Publicada':'Rascunho')+'</span><h2>'+esc(o.name)+'</h2><dl class="data-list"><div><dt>Produto</dt><dd>'+esc(o.product_id)+'</dd></div><div><dt>Preço</dt><dd>'+money(o.price_cents)+'</dd></div><div><dt>Modalidade</dt><dd>'+esc(saleName(o.sale_type))+'</dd></div><div><dt>Entrega</dt><dd>'+esc(deliveryName(o.delivery_mode))+'</dd></div></dl>'+
+ (offerReadiness?.offers?.find(x=>x.id===o.id)?.variants?.length?'<div class="surface ops-card">'+
+   offerReadiness.offers.find(x=>x.id===o.id).variants.map(x=>'<p><strong>'+esc(x.platform)+'</strong> · '+esc(x.artifactName)+' · '+
+    (x.ready?'Validado para entrega':x.verified?(x.outdated?'Versão desatualizada':x.legalApproved?'Aguardando':'Licenciamento pendente'):'Arquivo não verificado')+'</p>').join('')+'</div>':'')+
  (!o.active?(block?'<div class="warning-note">'+esc(block)+'</div>':'<p class="muted">Revise preço e entrega antes de publicar.</p>'):'<p class="muted">Esta oferta está publicada. Edite com atenção para futuras compras.</p>')+
+ ((!o.active&&offerReadiness?.offers?.find(x=>x.id===o.id)?.variants?.length===1&&
+     offerReadiness.offers.find(x=>x.id===o.id).variants[0].verified&&
+     !offerReadiness.offers.find(x=>x.id===o.id).variants[0].legalApproved&&
+     !offerReadiness.offers.find(x=>x.id===o.id).variants[0].outdated)
+   ?'<p><button class="secondary" type="button" data-review-license="'+esc(offerReadiness.offers.find(x=>x.id===o.id).variants[0].artifactName)+'">Revisar licenças e documentação</button></p>':'')+
  '<div class="form-actions"><button class="secondary" type="button" data-edit-offer="'+esc(o.id)+'">Editar</button>'+
  (!o.active?'<button class="primary" type="button" data-publish="'+esc(o.id)+'" '+(block?'disabled title="'+esc(block)+'"':'')+'>Publicar oferta</button>':'<button class="secondary" type="button" data-unpublish="'+esc(o.id)+'">Retirar do catálogo</button>')+'</div>');
 }
 function publicationBlock(o){
  if(!paymentsOnline())return 'A publicação requer que PAYMENTS_ENABLED esteja ativo após a validação financeira.';
- if(!health?.gatewayConfigured)return 'É necessário configurar a chave do Asaas.';
+ if(!(offerReadiness?.asaasConfigured||offerReadiness?.manualPixConfigured))return 'Configure o Asaas ou o Pix manual antes de publicar.';
  if(o.delivery_mode==='webhook'&&!integrations.some(i=>i.productId===o.product_id&&i.configured))return 'O conector deste produto ainda não está configurado.';
- if(o.delivery_mode==='download')return 'Antes de publicar downloads, é necessário validar o arquivo no R2. Esta verificação ainda não existe no painel.';
+ if(o.delivery_mode==='download'){
+  const status=offerReadiness?.offers?.find(x=>x.id===o.id);
+  if(!status?.ready)return 'Arquivo ou licenças pendentes: '+(status?.reason||'ainda não verificado')+'.';
+ }
  return '';
 }
 const valuesFromOffer=o=>o?{id:o.id,productId:o.product_id,name:o.name,description:o.description||'',price:(o.price_cents/100).toFixed(2),saleType:o.sale_type,deliveryMode:o.delivery_mode,artifactName:o.artifact_name||'',active:!!o.active}: {id:'',productId:'',name:'',description:'',price:'',saleType:'one_time',deliveryMode:'manual',artifactName:'',active:false};
@@ -353,6 +420,9 @@ document.addEventListener('click',e=>{
  if(button.dataset.order){openOrder(button.dataset.order);return;}
  if(button.dataset.offer){openOffer(button.dataset.offer);return;}
  if(button.id==='import-catalog'){importCatalog();return;}
+ if(button.id==='prepare-systems'){prepareSystems();return;}
+ if(button.dataset.reviewLicense){licenseReview(button.dataset.reviewLicense);return;}
+ if(button.dataset.rotateAccess){rotateAccess(button.dataset.rotateAccess);return;}
  if(button.id==='new-offer'||button.hasAttribute('data-new-offer')){offerWizard();return;}
  if(button.dataset.editOffer!==undefined){offerWizard(button.dataset.editOffer);return;}
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}

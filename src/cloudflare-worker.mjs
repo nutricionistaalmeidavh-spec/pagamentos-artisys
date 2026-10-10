@@ -4,6 +4,7 @@ import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
 import {devkitReleaseAdmin} from './devkit-release-admin.mjs';
 import {verifyReleaseGithubOidc} from './github-oidc.mjs';
+import {SYSTEMS,defaultSystemVariant,systemVariants,resolveOrderArtifact,artifactForPaidOrder,downloadReadiness,verifyStoredRelease,isDevkit,KITS_BY_ARTIFACT} from './delivery-catalog.mjs';
 
 const schema=[
   "CREATE TABLE IF NOT EXISTS offers(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',price_cents INTEGER NOT NULL CHECK(price_cents>0),currency TEXT NOT NULL DEFAULT 'BRL',sale_type TEXT NOT NULL DEFAULT 'one_time',delivery_mode TEXT NOT NULL DEFAULT 'manual',artifact_name TEXT,active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
@@ -14,7 +15,8 @@ const schema=[
   "CREATE TABLE IF NOT EXISTS audit_logs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,subject_id TEXT NOT NULL,details TEXT NOT NULL,created_at TEXT NOT NULL)",
   "CREATE INDEX IF NOT EXISTS idx_events_pending ON provider_events(status,next_attempt_at)",
   "CREATE INDEX IF NOT EXISTS idx_jobs_pending ON fulfillments(status,next_attempt_at)",
-  "CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(status,created_at)"
+  "CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(status,created_at)",
+  "CREATE TABLE IF NOT EXISTS release_approvals(artifact_name TEXT PRIMARY KEY,approved_at TEXT NOT NULL,review_note TEXT NOT NULL)"
 ];
 const now=()=>new Date().toISOString(),uuid=()=>crypto.randomUUID();
 const json=(value,status=200,headers={})=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff',...headers}});
@@ -33,7 +35,13 @@ const safeEqual=async (a,b)=>{
  return diff===0;
 };
 const selection={id:'id',offerId:'offer_id',productId:'product_id',amountCents:'amount_cents',currency:'currency',saleType:'sale_type',status:'status',paymentProvider:'payment_provider',checkoutUrl:'checkout_url',checkoutState:'checkout_state',fulfillmentStatus:'fulfillment_status',createdAt:'created_at'};
-const publicOrder=row=>row&&Object.fromEntries(Object.entries(selection).map(([k,v])=>[k,row[v]??null]));
+const publicOrder=row=>{
+ if(!row)return null;
+ const out=Object.fromEntries(Object.entries(selection).map(([k,v])=>[k,row[v]??null]));
+ const release=artifactForPaidOrder(row);
+ if(release){out.platform=release.platform||'Código-fonte';out.version=release.version||null;out.downloadName=release.fileName;}
+ return out;
+};
 const query=(db,sql,...args)=>db.prepare(sql).bind(...args);
 let readyDb=null,readyPromise=null;
 async function initialize(env){
@@ -58,6 +66,16 @@ async function insertMissingCatalogDrafts(db){
  const created=result.reduce((sum,item)=>sum+Number(item?.meta?.changes||0),0);
  return {expected:CATALOG_DRAFTS.length,created,alreadyExisting:CATALOG_DRAFTS.length-created,active:false};
 }
+async function prepareSystemDrafts(db){
+ const results=[];
+ for(const [offerId] of SYSTEMS){
+  const first=defaultSystemVariant(offerId),artifact=first.key.slice('releases/'.length);
+  const changed=await exec(db,"UPDATE offers SET delivery_mode='download',artifact_name=?,updated_at=? WHERE id=? AND active=0 AND delivery_mode='manual' AND (artifact_name IS NULL OR artifact_name='')",artifact,now(),offerId);
+  results.push({id:offerId,updated:Number(changed.meta?.changes||0)});
+ }
+ if(results.some(x=>x.updated))await audit(db,'download_offers_prepared','four_systems',results);
+ return results;
+}
 async function initialCatalogImport(env){
  const db=env.PAGAMENTO_ARTISYS_DB;
  const done=await one(db,"SELECT id FROM audit_logs WHERE kind='catalog_seed_completed' AND subject_id=? LIMIT 1",CATALOG_SOURCE);
@@ -70,9 +88,9 @@ async function admin(request,env){
  if(!env.ADMIN_TOKEN||env.ADMIN_TOKEN.length<32)throw fail('admin_not_configured',503);
  if(!await safeEqual(headerToken(request),env.ADMIN_TOKEN))throw fail('unauthorized',401);
 }
-async function authorizedOrder(request,env,id){
+async function authorizedOrder(request,env,id,accessCode=headerToken(request)){
  const found=await one(env.PAGAMENTO_ARTISYS_DB,'SELECT * FROM orders WHERE id=?',id);
- if(!found||!await safeEqual(await digest(headerToken(request)),found.access_hash))throw fail('order_not_found',404);
+ if(!found||!await safeEqual(await digest(accessCode),found.access_hash))throw fail('order_not_found',404);
  return found;
 }
 async function markPaid(env,order,origin,proof=null){
@@ -106,14 +124,20 @@ async function deliver(env,job){
   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='awaiting_manual',updated_at=? WHERE id=?",now(),job.id);
   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='awaiting_manual' WHERE id=?",order.id);return;
  }
+ if(job.action==='revoke'&&order.delivery_mode==='download'){
+  await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='delivered',last_error=NULL,updated_at=? WHERE id=?",now(),job.id);
+  await audit(env.PAGAMENTO_ARTISYS_DB,'download_access_revoked',order.id,{action:job.action});
+  return;
+ }
  if(job.action==='activate'&&order.delivery_mode==='download'){
-  if(!validArtifact(order.artifact_name)||!env.PAGAMENTO_ARTISYS_ARQUIVOS){
+  const release=artifactForPaidOrder(order);
+  if(!release||!env.PAGAMENTO_ARTISYS_ARQUIVOS){
    await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='r2_or_artifact_not_configured',updated_at=? WHERE id=?",now(),job.id);
    await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
   }
-  const obj=await env.PAGAMENTO_ARTISYS_ARQUIVOS.head('releases/'+order.artifact_name);
-  if(!obj){
-   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='artifact_not_found',updated_at=? WHERE id=?",now(),job.id);
+  const checked=await verifyStoredRelease(env,release);
+  if(!checked.verified){
+   await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE fulfillments SET status='waiting_configuration',last_error='artifact_not_verified',updated_at=? WHERE id=?",now(),job.id);
    await exec(env.PAGAMENTO_ARTISYS_DB,"UPDATE orders SET fulfillment_status='waiting_configuration' WHERE id=?",order.id);return;
   }
  }else{
@@ -215,13 +239,13 @@ function cors(req,env){
 }
 async function process(request,env,ctx){
  const path=new URL(request.url).pathname,method=request.method,d=env.PAGAMENTO_ARTISYS_DB,headers=cors(request,env);
- const allowedOrigin=!request.headers.get('origin')||Object.keys(headers).length>0;
+ const allowedOrigin=!request.headers.get('origin')||request.headers.get('origin')===new URL(request.url).origin||Object.keys(headers).length>0;
  const send=(data,status=200)=>json(data,status,headers);
  if(method==='OPTIONS')return new Response(null,{status:allowedOrigin?204:403,headers});
  if(method==='GET'&&path==='/healthz'){
   await initialize(env);
   const count=await one(d,"SELECT COUNT(*) AS total FROM offers WHERE id IN ("+CATALOG_DRAFTS.map(()=>'?').join(',')+")",...CATALOG_DRAFTS.map(x=>x.id));
-  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67,releaseSyncAuth:'github-oidc-v2',devkitSyncAuth:'github-oidc-devkits-v1'});
+  return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,manualPixConfigured:!!env.MANUAL_PIX_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67,releaseSyncAuth:'github-oidc-v2',devkitSyncAuth:'github-oidc-devkits-v1'});
  }
  if(method==='GET'&&['/','/admin','/comprar','/pedido','/assets/style.css','/assets/admin.css','/assets/admin.js','/assets/checkout.js'].includes(path)){
   const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
@@ -230,7 +254,7 @@ async function process(request,env,ctx){
  }
  if(!path.startsWith('/v1/'))return send({error:'not_found'},404);
  await initialize(env);
- if(method==='GET'&&path==='/v1/catalog')return send({offers:(await rows(d,"SELECT id,product_id,name,description,price_cents,currency,sale_type,delivery_mode FROM offers WHERE active=1 ORDER BY name")).map(x=>({id:x.id,productId:x.product_id,name:x.name,description:x.description,priceCents:x.price_cents,currency:x.currency,saleType:x.sale_type,deliveryMode:x.delivery_mode}))});
+ if(method==='GET'&&path==='/v1/catalog')return send({offers:(await rows(d,"SELECT id,product_id,name,description,price_cents,currency,sale_type,delivery_mode FROM offers WHERE active=1 ORDER BY name")).map(x=>({id:x.id,productId:x.product_id,name:x.name,description:x.description,priceCents:x.price_cents,currency:x.currency,saleType:x.sale_type,deliveryMode:x.delivery_mode,variants:systemVariants(x.id)}))});
  if(method==='POST'&&path==='/v1/orders'){
   if(!allowedOrigin)throw fail('origin_not_allowed',403);
   const v=isObj(await read(request)),email=String(v.email||'').trim().toLowerCase(),name=String(v.name||'').trim().slice(0,120);
@@ -242,28 +266,48 @@ async function process(request,env,ctx){
   if(existing)throw fail('idempotency_key_already_used',409);
   const code=String(v.couponCode||'').trim().toUpperCase(),discount=code?await one(d,'SELECT * FROM coupons WHERE code=? AND active=1',code):null;
   if(code&&!discount)throw fail('invalid_coupon');
+  let chosenArtifact=offer.artifact_name;
+  if(offer.delivery_mode==='download'){
+   let resolved;try{resolved=resolveOrderArtifact(offer,v.variantId||null);}catch(e){throw fail(e.message,400);}
+   const approvals=new Set((await rows(d,'SELECT artifact_name FROM release_approvals')).map(x=>x.artifact_name));
+   if(isDevkit(resolved.release)&&!approvals.has(resolved.artifactName))throw fail('license_review_pending',409);
+   const checked=await verifyStoredRelease(env,resolved.release);
+   if(!checked.verified||resolved.release.outdated)throw fail('artifact_not_verified',409);
+   chosenArtifact=resolved.artifactName;
+  }else if(v.variantId)throw fail('invalid_variant',400);
   const price=Math.max(1,Math.round(offer.price_cents*(100-(discount?.percent_off||0))/100));
   const secret=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(v=>v.toString(16).padStart(2,'0')).join('');
   const id=uuid(),t=now();
   try{
    await exec(d,"INSERT INTO orders(id,offer_id,product_id,customer_email,customer_name,amount_cents,original_amount_cents,coupon_code,currency,sale_type,delivery_mode,artifact_name,access_hash,idem_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    id,offer.id,offer.product_id,email,name,price,offer.price_cents,code||null,offer.currency,offer.sale_type,offer.delivery_mode,offer.artifact_name,await digest(secret),idem,t,t);
+    id,offer.id,offer.product_id,email,name,price,offer.price_cents,code||null,offer.currency,offer.sale_type,offer.delivery_mode,chosenArtifact,await digest(secret),idem,t,t);
   }catch(e){if(String(e.message).includes('UNIQUE'))throw fail('idempotency_key_already_used',409);throw e;}
   return send({order:publicOrder(await one(d,'SELECT * FROM orders WHERE id=?',id)),orderAccessToken:secret},201);
  }
  const ord=path.match(/^\/v1\/orders\/([a-f0-9-]{36})(?:\/(checkout|download))?$/);
  if(ord){
-  const row=await authorizedOrder(request,env,ord[1]);
+  let formCode=null;
+  if(method==='POST'&&ord[2]==='download'){
+   if(!allowedOrigin||Number(request.headers.get('content-length')||0)>1000)throw fail('invalid_download_request',403);
+   if(!String(request.headers.get('content-type')||'').startsWith('application/x-www-form-urlencoded'))throw fail('invalid_download_request',400);
+   const raw=await request.text();if(raw.length>1000)throw fail('invalid_download_request',413);
+   formCode=new URLSearchParams(raw).get('accessCode')||'';
+   if(!/^[a-f0-9]{64}$/.test(formCode))throw fail('invalid_download_request',403);
+  }
+  const row=await authorizedOrder(request,env,ord[1],formCode||headerToken(request));
   if(method==='GET'&&!ord[2])return send({order:publicOrder(row)});
-  if(method==='GET'&&ord[2]==='download'){
-   if(row.status!=='paid'||row.fulfillment_status!=='delivered'||row.delivery_mode!=='download'||!validArtifact(row.artifact_name))throw fail('download_not_ready',409);
-   if(!env.PAGAMENTO_ARTISYS_ARQUIVOS)throw fail('storage_not_configured',503);
-   const object=await env.PAGAMENTO_ARTISYS_ARQUIVOS.get('releases/'+row.artifact_name);
+  if((method==='GET'||method==='POST')&&ord[2]==='download'){
+   const release=artifactForPaidOrder(row);
+   if(row.status!=='paid'||row.fulfillment_status!=='delivered'||row.delivery_mode!=='download'||!release)throw fail('download_not_ready',409);
+   const checked=await verifyStoredRelease(env,release);
+   if(!checked.verified)throw fail('artifact_not_verified',409);
+   const object=await env.PAGAMENTO_ARTISYS_ARQUIVOS.get(release.key);
    if(!object)throw fail('artifact_missing',404);
-   return new Response(object.body,{headers:{...headers,'content-type':'application/octet-stream','content-disposition':'attachment; filename="'+row.artifact_name+'"','cache-control':'no-store','x-content-type-options':'nosniff'}});
+   return new Response(object.body,{headers:{...headers,'content-type':'application/octet-stream','content-disposition':'attachment; filename="'+release.fileName+'"','cache-control':'private, no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'}});
   }
   if(method==='POST'&&ord[2]==='checkout'){
    if(!allowedOrigin)throw fail('origin_not_allowed',403);
+   if(env.PAYMENTS_ENABLED!=='true')throw fail('payments_not_enabled',503);
    const v=isObj(await read(request)),provider=String(v.provider||'');
    if(!['asaas','manual_pix'].includes(provider))throw fail('invalid_provider');
    if(row.status!=='pending'||['canceled','expired'].includes(row.checkout_state))throw fail('order_not_payable',409);
@@ -325,6 +369,34 @@ async function process(request,env,ctx){
    return send({summary:{...summary,failedEvents:broken.count},integrations:Object.entries(connections).map(([productId,x])=>({productId,configured:!!(x?.url&&x?.secret)}))});
   }
   if(method==='GET'&&path==='/v1/admin/offers')return send({offers:await rows(d,'SELECT * FROM offers ORDER BY updated_at DESC LIMIT 200')});
+  if(method==='GET'&&path==='/v1/admin/offer-readiness'){
+   const all=await rows(d,'SELECT * FROM offers ORDER BY name');
+   const approved=new Set((await rows(d,'SELECT artifact_name FROM release_approvals')).map(x=>x.artifact_name));
+   const result=await Promise.all(all.map(async o=>({id:o.id,name:o.name,active:!!o.active,deliveryMode:o.delivery_mode,priceCents:o.price_cents,
+    ...(o.delivery_mode==='download'?await downloadReadiness(env,o,approved):{ready:false,reason:'delivery_not_download',variants:[]})})));
+   return send({offers:result,paymentsEnabled:env.PAYMENTS_ENABLED==='true',
+    asaasConfigured:!!(env.ASAAS_API_KEY&&env.ASAAS_WEBHOOK_TOKEN&&env.PUBLIC_BASE_URL),
+    manualPixConfigured:!!env.MANUAL_PIX_KEY,licensesApproved:approved.size});
+  }
+  if(method==='POST'&&path==='/v1/admin/prepare-download-offers'){
+   const results=await prepareSystemDrafts(d);
+   return send({results,published:false,paymentsEnabled:env.PAYMENTS_ENABLED==='true'});
+  }
+  if(method==='POST'&&path==='/v1/admin/review-devkit-license'){
+   const data=isObj(await read(request)),file=String(data.artifactName||''),kit=KITS_BY_ARTIFACT.get(file);
+   if(!kit||kit.outdated)throw fail('kit_license_review_unavailable',409);
+   if(data.approved===true){
+    if(data.confirm!=='CONFIRMO LICENCAS E DOCUMENTACAO'||data.licensesChecked!==true||data.documentationChecked!==true)
+     throw fail('license_review_confirmation_required',400);
+    const verified=await verifyStoredRelease(env,kit);
+    if(!verified.verified)throw fail('artifact_not_verified',409);
+    await exec(d,"INSERT INTO release_approvals(artifact_name,approved_at,review_note) VALUES(?,?,?) ON CONFLICT(artifact_name) DO UPDATE SET approved_at=excluded.approved_at,review_note=excluded.review_note",file,now(),'revisao explicita do operador');
+   }else if(data.approved===false){
+    await exec(d,'DELETE FROM release_approvals WHERE artifact_name=?',file);
+   }else throw fail('invalid_approval_action');
+   await audit(d,'license_review',file,{approved:data.approved});
+   return send({artifactName:file,approved:data.approved,published:false});
+  }
 
   if(method==='GET'&&path==='/v1/admin/catalog-drafts/status'){
    const ids=CATALOG_DRAFTS.map(x=>x.id),existing=await rows(d,"SELECT id,active,price_cents,product_id FROM offers WHERE id IN ("+ids.map(()=>'?').join(',')+")",...ids);
@@ -340,6 +412,21 @@ async function process(request,env,ctx){
   if(method==='POST'&&path==='/v1/admin/offers'){
    const v=isObj(await read(request)),id=String(v.id||''),pid=String(v.productId||''),price=Number(v.priceCents),sale=String(v.saleType||'one_time'),delivery=String(v.deliveryMode||'manual'),artifact=v.artifactName||null;
    if(!validId(id)||!validId(pid)||!String(v.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw fail('invalid_offer');
+   if(v.active){
+    if(env.PAYMENTS_ENABLED!=='true')throw fail('payments_not_enabled',409);
+    if(!(env.MANUAL_PIX_KEY||(env.ASAAS_API_KEY&&env.ASAAS_WEBHOOK_TOKEN&&env.PUBLIC_BASE_URL)))
+     throw fail('payment_provider_not_configured',409);
+    if(delivery==='download'){
+     const offer={id,product_id:pid,delivery_mode:delivery,artifact_name:artifact,price_cents:price};
+     const approved=new Set((await rows(d,'SELECT artifact_name FROM release_approvals')).map(x=>x.artifact_name));
+     const checked=await downloadReadiness(env,offer,approved);
+     if(!checked.ready)throw fail(checked.reason||'download_not_ready',409);
+    }
+    if(delivery==='webhook'){
+     const target=connectorFor(env,pid);
+     if(!target.url||!target.secret)throw fail('connector_missing',409);
+    }
+   }
    await exec(d,"INSERT INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,price_cents=excluded.price_cents,sale_type=excluded.sale_type,delivery_mode=excluded.delivery_mode,artifact_name=excluded.artifact_name,active=excluded.active,updated_at=excluded.updated_at",
     id,pid,String(v.name).trim().slice(0,140),String(v.description||'').slice(0,500),price,sale,delivery,artifact,v.active?1:0,now(),now());
    return send({offer:await one(d,'SELECT * FROM offers WHERE id=?',id)});
@@ -354,9 +441,16 @@ async function process(request,env,ctx){
   if(method==='GET'&&path==='/v1/admin/orders')return send({orders:(await rows(d,'SELECT * FROM orders ORDER BY created_at DESC LIMIT 200')).map(x=>({...publicOrder(x),customerEmail:x.customer_email,customerName:x.customer_name}))});
   if(method==='GET'&&path==='/v1/admin/events')return send({events:await rows(d,'SELECT id,event_type,status,attempts,last_error,received_at,processed_at FROM provider_events ORDER BY received_at DESC LIMIT 200')});
   if(method==='GET'&&path==='/v1/admin/fulfillments')return send({fulfillments:await rows(d,'SELECT id,order_id,action,status,attempts,last_error,updated_at FROM fulfillments ORDER BY created_at DESC LIMIT 200')});
-  const action=path.match(/^\/v1\/admin\/orders\/([a-f0-9-]{36})\/(confirm-manual|deliver-manual|reconcile)$/);
+  const action=path.match(/^\/v1\/admin\/orders\/([a-f0-9-]{36})\/(confirm-manual|deliver-manual|reconcile|rotate-access)$/);
   if(method==='POST'&&action){
    const row=await one(d,'SELECT * FROM orders WHERE id=?',action[1]);if(!row)throw fail('order_not_found',404);
+   if(action[2]==='rotate-access'){
+    if(row.status!=='paid')throw fail('paid_order_required',409);
+    const fresh=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(v=>v.toString(16).padStart(2,'0')).join('');
+    await exec(d,'UPDATE orders SET access_hash=?,updated_at=? WHERE id=?',await digest(fresh),now(),row.id);
+    await audit(d,'customer_access_rotated',row.id,{operator:'admin',previousAccessRevoked:true});
+    return send({orderId:row.id,orderAccessToken:fresh,oneTimeDisplay:true});
+   }
    if(action[2]==='confirm-manual'){
     if(row.payment_provider!=='manual_pix'||row.status!=='pending')throw fail('manual_payment_not_pending',409);
     await markPaid(env,row,'manual_admin');ctx.waitUntil(queueWorker(env));return send({order:publicOrder(await one(d,'SELECT * FROM orders WHERE id=?',row.id))});
@@ -391,6 +485,6 @@ export default {
  },
  async scheduled(event,env,ctx){
   ctx.waitUntil((async()=>{await initialize(env);await reconcilePending(env);await queueWorker(env);})().catch(e=>console.error('scheduled_error',String(e.message).slice(0,120))));
-  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
+  ctx.waitUntil((async()=>{await initialize(env);await initialCatalogImport(env);await prepareSystemDrafts(env.PAGAMENTO_ARTISYS_DB);})().catch(e=>console.error('catalog_seed_error',String(e.message).slice(0,120))));
  }
 };

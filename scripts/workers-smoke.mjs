@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 
 const port=18781,base='http://127.0.0.1:'+port;
 const admin='local-admin-test-token-0123456789-abcdefabcdef',hook='local-hook-test-token-0123456789-abcdefabcdef';
-writeFileSync('.dev.vars','ADMIN_TOKEN='+admin+'\nASAAS_WEBHOOK_TOKEN='+hook+'\nMANUAL_PIX_KEY=local-pix-test\nPUBLIC_ORIGINS=http://localhost:3000\n');
+writeFileSync('.dev.vars','ADMIN_TOKEN='+admin+'\nASAAS_WEBHOOK_TOKEN='+hook+'\nMANUAL_PIX_KEY=local-pix-test\nPAYMENTS_ENABLED=true\nPUBLIC_ORIGINS=http://localhost:3000\n');
 const cmd=process.platform==='win32'?'node_modules/.bin/wrangler.cmd':'node_modules/.bin/wrangler';
 const child=spawn(cmd,['dev','--local','--ip','127.0.0.1','--port',String(port)],{stdio:['ignore','pipe','pipe']});
 let output='';
@@ -30,6 +30,7 @@ try{
  const adminCSS=await fetch(base+'/assets/admin.css');assert.equal(adminCSS.status,200);assert.match(await adminCSS.text(),/safe-area-inset-bottom/);
  const adminScript=await fetch(base+'/assets/admin.js');assert.equal(adminScript.status,200);assert.match(await adminScript.text(),/renderOrders/);
  assert.equal((await call('/v1/admin/summary')).status,401);
+ // Somente Worker local efêmero: PAYMENTS_ENABLED=true não habilita cobrança real nem configura o Asaas.
  const o=await call('/v1/admin/offers','POST',{id:'pdv-test',productId:'pdv-artisys',name:'PDV',priceCents:18900,deliveryMode:'manual',active:true},admin);
  assert.equal(o.status,200,JSON.stringify(o.data));
  const catalog=await call('/v1/catalog');
