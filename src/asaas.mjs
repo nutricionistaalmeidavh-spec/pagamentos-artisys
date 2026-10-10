@@ -45,14 +45,14 @@ export function validCheckoutUrl(url) {
     return parsed.protocol === 'https:' && CHECKOUT_HOSTS.has(parsed.hostname) && parsed.pathname.startsWith('/checkoutSession/') && !parsed.username && !parsed.password;
   } catch { return false; }
 }
-export async function createCheckout(env, fetchImpl, order, offer) {
+export async function createCheckout(env, fetchImpl, order, offer, paymentMethod='default') {
   const base = gatewayConfig(env);
   const recurring = order.sale_type !== 'one_time';
   // URL absoluta normalizada: PUBLIC_BASE_URL pode vir com barra final.
   const returnUrl=new URL('/pedido?id='+encodeURIComponent(order.id),env.PUBLIC_BASE_URL).href;
   const body = {
     externalReference: order.id,
-    billingTypes: recurring || env.ASAAS_PIX_ENABLED!=='true' ? ['CREDIT_CARD'] : ['PIX', 'CREDIT_CARD'],
+    billingTypes: recurring || paymentMethod==='credit_card' || env.ASAAS_PIX_ENABLED!=='true' ? ['CREDIT_CARD'] : ['PIX', 'CREDIT_CARD'],
     chargeTypes: recurring ? ['RECURRENT'] : ['DETACHED'],
     minutesToExpire: 60,
     callback: {
