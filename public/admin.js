@@ -276,7 +276,7 @@ function prepareSystems(){
  }));
 }
 function licenseReview(file){
- const slug=file.replace(/-v[0-9]+\\.[0-9]+\\.[0-9]+\\.zip$/,'');
+ const slug=file.replace(/-v[0-9]+\.[0-9]+\.[0-9]+\.zip$/,'');
  const href='https://github.com/nutricionistaalmeidavh-spec/DevKitTools/tree/main/kits/'+encodeURIComponent(slug);
  openModal('Conferência comercial do Dev Kit','<p><strong>'+esc(file)+'</strong></p>'+
   '<p>Antes de homologar, confira titularidade do código, dependências de terceiros, atribuições, termos comerciais e documentação.</p>'+
