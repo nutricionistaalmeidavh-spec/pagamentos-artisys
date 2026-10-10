@@ -37,10 +37,20 @@ class SyncError(Exception):
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # GitHub artifacts redirect to a different storage host. Never forward
+        # the runner's Authorization token across hosts or to plain HTTP.
+        previous = urllib.parse.urlparse(req.full_url)
+        target = urllib.parse.urlparse(newurl)
+        if target.scheme != "https" or not target.hostname:
+            raise SyncError("Redirecionamento de instalador para destino não HTTPS")
         redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if redirected and urllib.parse.urlparse(req.full_url).hostname != urllib.parse.urlparse(newurl).hostname:
-            redirected.remove_header("Authorization")
-            redirected.remove_unredirected_header("Authorization")
+        if redirected and (previous.hostname, previous.port) != (target.hostname, target.port):
+            # urllib.request.Request on Python 3.12 has no
+            # remove_unredirected_header(); filter both dictionaries by name.
+            for mapping in (redirected.headers, redirected.unredirected_hdrs):
+                for name in list(mapping):
+                    if name.lower() in ("authorization", "proxy-authorization"):
+                        del mapping[name]
         return redirected
 
 
