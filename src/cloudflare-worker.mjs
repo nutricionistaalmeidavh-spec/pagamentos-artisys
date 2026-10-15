@@ -1,4 +1,5 @@
 import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
+import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {publishVerifiedSystems} from './system-offer-publication.mjs';
@@ -9,6 +10,7 @@ import {SYSTEMS,defaultSystemVariant,systemVariants,resolveOrderArtifact,artifac
 
 const schema=[
   "CREATE TABLE IF NOT EXISTS offers(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',price_cents INTEGER NOT NULL CHECK(price_cents>0),currency TEXT NOT NULL DEFAULT 'BRL',sale_type TEXT NOT NULL DEFAULT 'one_time',delivery_mode TEXT NOT NULL DEFAULT 'manual',artifact_name TEXT,active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS order_buyer_bindings(order_id TEXT PRIMARY KEY,binding TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS coupons(code TEXT PRIMARY KEY,percent_off INTEGER NOT NULL CHECK(percent_off BETWEEN 1 AND 90),active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,offer_id TEXT NOT NULL,product_id TEXT NOT NULL,customer_email TEXT NOT NULL,customer_name TEXT NOT NULL DEFAULT '',amount_cents INTEGER NOT NULL,original_amount_cents INTEGER NOT NULL,coupon_code TEXT,currency TEXT NOT NULL DEFAULT 'BRL',sale_type TEXT NOT NULL,delivery_mode TEXT NOT NULL,artifact_name TEXT,status TEXT NOT NULL DEFAULT 'pending',payment_provider TEXT,checkout_id TEXT UNIQUE,provider_payment_id TEXT UNIQUE,checkout_url TEXT,checkout_state TEXT NOT NULL DEFAULT 'not_started',fulfillment_status TEXT NOT NULL DEFAULT 'not_started',subscription_id TEXT,access_hash TEXT NOT NULL,idem_key TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(customer_email,idem_key))",
   "CREATE TABLE IF NOT EXISTS provider_events(id TEXT PRIMARY KEY,event_type TEXT NOT NULL,payload TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'received',attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT,next_attempt_at INTEGER NOT NULL DEFAULT 0,locked_at INTEGER NOT NULL DEFAULT 0,received_at TEXT NOT NULL,processed_at TEXT)",
@@ -151,7 +153,9 @@ async function deliver(env,job){
   const uri=new URL(target.url);
   if(uri.protocol!=='https:'||!origin.includes(uri.origin)||uri.username||uri.password)throw Error('connector_origin_rejected');
   const action=job.action==='revoke'?'license.revoke':job.action.startsWith('renew:')?'license.renew':'license.activate';
-  const payload=JSON.stringify({event:'artisys.'+action,orderId:order.id,productId:order.product_id,email:order.customer_email,customerName:order.customer_name,amountCents:order.amount_cents,currency:order.currency,saleType:order.sale_type,idempotencyKey:job.id});
+  const buyerRow=isHubProduct(order.product_id)?await one(env.PAGAMENTO_ARTISYS_DB,'SELECT binding FROM order_buyer_bindings WHERE order_id=?',order.id):null;
+  if(isHubProduct(order.product_id)&&!buyerRow?.binding)throw Error('buyer_binding_missing');
+  const payload=JSON.stringify({event:'artisys.'+action,orderId:order.id,productId:order.product_id,email:order.customer_email,customerName:order.customer_name,amountCents:order.amount_cents,currency:order.currency,saleType:order.sale_type,...checkoutBinding(order.product_id,buyerRow?.binding),...(isHubProduct(order.product_id)?{orderCreatedAt:order.created_at}:{}),idempotencyKey:job.id});
   const ts=String(Date.now()),signature=await hmac(target.secret,ts+'.'+payload);
   const response=await fetch(uri.toString(),{method:'POST',headers:{'content-type':'application/json','x-artisys-timestamp':ts,'x-artisys-signature':'sha256='+signature,'x-artisys-delivery-id':job.id},body:payload,signal:AbortSignal.timeout(10000),redirect:'error'});
   const confirmation=await response.json().catch(()=>null);
@@ -293,6 +297,9 @@ async function process(request,env,ctx){
   if(!validEmail(email)||!validId(v.offerId)||idem.length<16||idem.length>120)throw fail('invalid_order');
   const offer=await one(d,'SELECT * FROM offers WHERE id=? AND active=1',v.offerId);
   if(!offer)throw fail('offer_not_available',404);
+  let buyerBinding=null;
+  try{buyerBinding=bindingForOffer(offer.product_id,offer.delivery_mode,v.buyerBinding);}
+  catch(e){throw fail(e.message,400);}
   const existing=await one(d,'SELECT id FROM orders WHERE customer_email=? AND idem_key=?',email,idem);
   if(existing)throw fail('idempotency_key_already_used',409);
   const code=String(v.couponCode||'').trim().toUpperCase(),discount=code?await one(d,'SELECT * FROM coupons WHERE code=? AND active=1',code):null;
@@ -310,8 +317,10 @@ async function process(request,env,ctx){
   const secret=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(v=>v.toString(16).padStart(2,'0')).join('');
   const id=uuid(),t=now();
   try{
-   await exec(d,"INSERT INTO orders(id,offer_id,product_id,customer_email,customer_name,amount_cents,original_amount_cents,coupon_code,currency,sale_type,delivery_mode,artifact_name,access_hash,idem_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+   const orderInsert=query(d,"INSERT INTO orders(id,offer_id,product_id,customer_email,customer_name,amount_cents,original_amount_cents,coupon_code,currency,sale_type,delivery_mode,artifact_name,access_hash,idem_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     id,offer.id,offer.product_id,email,name,price,offer.price_cents,code||null,offer.currency,offer.sale_type,offer.delivery_mode,chosenArtifact,await digest(secret),idem,t,t);
+   if(buyerBinding)await d.batch([orderInsert,query(d,'INSERT INTO order_buyer_bindings(order_id,binding) VALUES(?,?)',id,buyerBinding)]);
+   else await orderInsert.run();
   }catch(e){if(String(e.message).includes('UNIQUE'))throw fail('idempotency_key_already_used',409);throw e;}
   return send({order:publicOrder(await one(d,'SELECT * FROM orders WHERE id=?',id)),orderAccessToken:secret},201);
  }
