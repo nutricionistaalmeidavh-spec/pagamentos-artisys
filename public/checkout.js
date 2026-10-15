@@ -1,7 +1,15 @@
 const el=id=>document.getElementById(id);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=x=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(x)||0)/100);
-const p=new URLSearchParams(location.search),selected=p.get('oferta'),id=p.get('id');
+const p=new URLSearchParams(location.search),selected=p.get('oferta'),id=p.get('id'),buyerBinding=p.get('buyer');
+function bindingEmail(ticket){
+ try{
+  if(!ticket||!/^[A-Za-z0-9_-]{40,1200}\.[0-9a-f]{64}$/.test(ticket))return '';
+  const base=ticket.split('.')[0].replace(/-/g,'+').replace(/_/g,'/');
+  const data=JSON.parse(atob(base.padEnd(Math.ceil(base.length/4)*4,'=')));
+  return typeof data.e==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.e)?data.e:'';
+ }catch{return '';}
+}
 const errorMessages={
  asaas_pix_key_required:'O Pix está temporariamente indisponível porque a loja ainda precisa cadastrar sua chave no Asaas. Você pode continuar com cartão de crédito.',
  asaas_checkout_rejected:'O provedor recusou os dados desta tentativa. Tente pagar com cartão ou entre em contato com o suporte.',
@@ -60,6 +68,12 @@ async function catalog(){
     :'<p>Nenhuma oferta de compra está publicada.</p>');
    return;
   }
+  const hub=offer.productId==='hubestudos-subscription'||offer.productId.startsWith('hubestudos-course-');
+  const buyerEmail=hub?bindingEmail(buyerBinding):'';
+  if(hub&&!buyerEmail){
+   el('content').innerHTML='<h2>Compra vinculada à sua conta</h2><p>Para comprar este curso, entre no HubEstudos e escolha a oferta pelo catálogo da sua conta. Assim, o acesso será liberado na conta correta.</p>';
+   return;
+  }
   const available=health.paymentsEnabled===true;
   const variants=offer.variants||[];
   const variantField=variants.length?'<label>Versão para seu sistema operacional<select name="variantId" required>'+variants.map(x=>
@@ -72,7 +86,7 @@ async function catalog(){
    '<p>'+esc(offer.saleType==='one_time'?'Pagamento único':'Assinatura '+offer.saleType)+'</p>'+
    (!available?'<p class="muted">Checkout temporariamente indisponível.</p>':
     '<form id="buy-form" class="stack"><label>Nome<input name="name" required maxlength="120"></label>'+
-    '<label>E-mail<input name="email" type="email" required></label>'+variantField+
+    '<label>E-mail<input name="email" type="email" required '+(hub?'readonly value="'+esc(buyerEmail)+'"':'')+'></label>'+variantField+
     '<label>Cupom (opcional)<input name="couponCode"></label>'+
     '<label>Forma de pagamento<select name="provider" required>'+paymentTypes.join('')+'</select></label>'+
     '<button class="primary" '+(!paymentTypes.length?'disabled':'')+'>Continuar</button></form>');
@@ -82,6 +96,7 @@ async function catalog(){
    try{
     const created=await api('/v1/orders','POST',{
      offerId:offer.id,email:f.get('email'),name:f.get('name'),couponCode:f.get('couponCode'),
+     ...(hub?{buyerBinding}:{}),
      variantId:f.get('variantId')||undefined,idempotencyKey:crypto.randomUUID()+'-'+crypto.randomUUID()
     });
     const orderId=created.order.id,code=created.orderAccessToken;
