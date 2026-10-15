@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createCheckout, checkoutAmountCents, verifyCheckoutPayment, verifyPaymentEvent } from './asaas.mjs';
+import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -141,7 +142,7 @@ export function createApp(options={}) {
           run("UPDATE provider_events SET status='failed',attempts=?,last_error=?,next_attempt_at=? WHERE id=?",tries,String(e.message).slice(0,300),Date.now()+Math.min(3600000,30000*2**Math.min(tries,6)),stored.id);
         }
       }
-      for(const job of all("SELECT f.*,o.product_id,o.customer_email,o.customer_name,o.amount_cents,o.currency,o.sale_type,o.status AS order_status,o.delivery_mode,o.artifact_name FROM fulfillments f JOIN orders o ON o.id=f.order_id WHERE f.status IN ('pending','failed') AND f.next_attempt_at<=? ORDER BY f.created_at LIMIT 20",Date.now())){
+      for(const job of all("SELECT f.*,o.product_id,o.customer_email,o.customer_name,o.amount_cents,o.currency,o.sale_type,o.created_at AS order_created_at,o.status AS order_status,o.delivery_mode,o.artifact_name FROM fulfillments f JOIN orders o ON o.id=f.order_id WHERE f.status IN ('pending','failed') AND f.next_attempt_at<=? ORDER BY f.created_at LIMIT 20",Date.now())){
         try{
           if(job.action!=='revoke' && job.order_status!=='paid')throw new Error('order_not_paid');
           const connector=obj(connectionMap()[job.product_id]);
@@ -165,7 +166,9 @@ export function createApp(options={}) {
             }
             const target=new URL(connector.url),allowed=String(env.CONNECTOR_ALLOWED_ORIGINS||'').split(',').map(x=>x.trim());
             if(target.protocol!=='https:'||!allowed.includes(target.origin)||target.username||target.password)throw new Error('connector_origin_not_allowed');
-            const payload=JSON.stringify({event:'artisys.'+(job.action==='revoke'?'license.revoke':job.action.startsWith('renew:')?'license.renew':'license.activate'),orderId:job.order_id,productId:job.product_id,email:job.customer_email,customerName:job.customer_name,amountCents:job.amount_cents,currency:job.currency,saleType:job.sale_type,idempotencyKey:job.id});
+            const binding=isHubProduct(job.product_id)?get('SELECT binding FROM order_buyer_bindings WHERE order_id=?',job.order_id):null;
+            if(isHubProduct(job.product_id)&&!binding?.binding)throw Error('buyer_binding_missing');
+            const payload=JSON.stringify({event:'artisys.'+(job.action==='revoke'?'license.revoke':job.action.startsWith('renew:')?'license.renew':'license.activate'),orderId:job.order_id,productId:job.product_id,email:job.customer_email,customerName:job.customer_name,amountCents:job.amount_cents,currency:job.currency,saleType:job.sale_type,...checkoutBinding(job.product_id,binding?.binding),...(isHubProduct(job.product_id)?{orderCreatedAt:job.order_created_at}:{}),idempotencyKey:job.id});
             const signedAt=String(Date.now()),signature=createHmac('sha256',connector.secret).update(signedAt+'.'+payload).digest('hex');
             const response=await fetchImpl(connector.url,{method:'POST',headers:{'content-type':'application/json','x-artisys-timestamp':signedAt,'x-artisys-signature':'sha256='+signature,'x-artisys-delivery-id':job.id},body:payload,signal:AbortSignal.timeout(10000),redirect:'error'});
             if(!response.ok)throw new Error('connector_http_'+response.status);
@@ -226,6 +229,9 @@ export function createApp(options={}) {
         if(!isEmail(email)||!safeId(input.offerId)||idem.length<16||idem.length>120)throw error('invalid_order',400);
         const offer=get('SELECT * FROM offers WHERE id=? AND active=1',input.offerId);
         if(!offer)throw error('offer_not_available',404);
+        let buyerBinding=null;
+        try{buyerBinding=bindingForOffer(offer.product_id,offer.delivery_mode,input.buyerBinding);}
+        catch(e){throw error(e.message,400);}
         const old=get('SELECT * FROM orders WHERE customer_email=? AND idem_key=?',email,idem);
         if(old)throw error('idempotency_key_already_used',409);
         const coupon=String(input.couponCode||'').trim().toUpperCase();
@@ -234,7 +240,10 @@ export function createApp(options={}) {
         const price=Math.max(1,Math.round(offer.price_cents*(100-(promo?.percent_off||0))/100));
         const access=token(),now=stamp(),id=uid();
         try {
-          run("INSERT INTO orders(id,offer_id,product_id,customer_email,customer_name,amount_cents,original_amount_cents,coupon_code,currency,sale_type,delivery_mode,artifact_name,access_hash,idem_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",id,offer.id,offer.product_id,email,name,price,offer.price_cents,coupon||null,offer.currency,offer.sale_type,offer.delivery_mode,offer.artifact_name,hash(access),idem,now,now);
+          txn(()=>{
+            run("INSERT INTO orders(id,offer_id,product_id,customer_email,customer_name,amount_cents,original_amount_cents,coupon_code,currency,sale_type,delivery_mode,artifact_name,access_hash,idem_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",id,offer.id,offer.product_id,email,name,price,offer.price_cents,coupon||null,offer.currency,offer.sale_type,offer.delivery_mode,offer.artifact_name,hash(access),idem,now,now);
+            if(buyerBinding)run('INSERT INTO order_buyer_bindings(order_id,binding) VALUES(?,?)',id,buyerBinding);
+          });
         }catch(e){if(String(e.message).includes('UNIQUE'))throw error('idempotency_key_already_used',409);throw e;}
         return json(res,201,{order:publicOrder(get('SELECT * FROM orders WHERE id=?',id)),orderAccessToken:access});
       }

@@ -198,3 +198,39 @@ test('reconciliar utiliza cobrança verificada e não depende da consulta ao che
     assert.equal((await t.call('/v1/admin/fulfillments','GET',null,admin)).data.fulfillments.length,1);
   } finally {await t.dispose();}
 });
+
+test('pedido Hub exige vínculo de sessão, transporta no HMAC e não expõe o ticket',async()=>{
+ const ticket='eyJ2IjoxLCJ1IjoiZjZmZjZiZTUtYzAxNC00NmJhLWI5M2ItMWE5MTNkYTExZGIzIiwicCI6Imh1YmVzdHVkb3MtY291cnNlLXdlYi1hcGlzIiwicyI6Im9uZV90aW1lIiwiZXhwIjo5OTk5OTk5OTk5OTk5fQ.'+'a'.repeat(64);
+ const secret='long-hub-only-connector-test-key-0123456789';
+ const t=await setup({PRODUCT_CONNECTORS_JSON:JSON.stringify({'hubestudos-course-web-apis':{url:'https://licensing.example.test/hub',secret}}),CONNECTOR_ALLOWED_ORIGINS:'https://licensing.example.test'});
+ try{
+  const offer=await t.offer('hub-web',{productId:'hubestudos-course-web-apis',deliveryMode:'webhook'});
+  assert.equal(offer.status,200);
+  assert.equal((await t.call('/v1/orders','POST',{offerId:'hub-web',email:'buyer@example.test',idempotencyKey:'unique-purchase-no-intent-0001'})).status,400);
+  const created=await t.call('/v1/orders','POST',{offerId:'hub-web',email:'buyer@example.test',name:'Buyer',buyerBinding:ticket,idempotencyKey:'unique-purchase-intent-00001'});
+  assert.equal(created.status,201);
+  assert.equal(JSON.stringify(created.data).includes(ticket),false);
+  const id=created.data.order.id,access=created.data.orderAccessToken;
+  assert.equal((await t.call('/v1/orders/'+id+'/checkout','POST',{provider:'manual_pix'},access)).status,200);
+  assert.equal((await t.call('/v1/admin/orders/'+id+'/confirm-manual','POST',{},admin)).status,200);
+  await t.app.processPending();
+  const sent=t.mocked.filter(x=>String(x.url).includes('licensing.example.test/hub'));
+  assert.equal(sent.length,1);
+  const payload=JSON.parse(sent[0].opts.body);
+  assert.equal(payload.buyerBinding,ticket);
+  assert.equal(payload.productId,'hubestudos-course-web-apis');
+  assert.equal(typeof payload.orderCreatedAt,'string');
+  assert.equal(payload.idempotencyKey.length,36);
+  assert.equal(JSON.stringify((await t.call('/v1/orders/'+id,'GET',null,access)).data).includes(ticket),false);
+ }finally{await t.dispose();}
+});
+
+test('pedido DevKit / sistema não exige nem propaga buyer binding',async()=>{
+ const t=await setup();
+ try{
+  assert.equal((await t.offer()).status,200);
+  const created=await t.call('/v1/orders','POST',{offerId:'pdv-standard',email:'buyer@example.test',name:'Comprador',buyerBinding:'token-de-outro-produto',idempotencyKey:'devkit-independent-binding-0001'});
+  assert.equal(created.status,201);
+  assert.equal(created.data.order.productId,'pdv-artisys');
+ }finally{await t.dispose();}
+});
