@@ -6,6 +6,10 @@ CREATE TABLE IF NOT EXISTS offers (
  delivery_mode TEXT NOT NULL DEFAULT 'manual', artifact_name TEXT,
  active INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS order_buyer_bindings (
+ order_id TEXT PRIMARY KEY, binding TEXT NOT NULL,
+ FOREIGN KEY(order_id) REFERENCES orders(id)
+);
 CREATE TABLE IF NOT EXISTS coupons (
  code TEXT PRIMARY KEY, percent_off INTEGER NOT NULL CHECK(percent_off BETWEEN 1 AND 90),
  active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
