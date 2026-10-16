@@ -219,7 +219,10 @@ function renderOfferCatalog(){
  const html=OFFER_GROUPS.map(group=>{
   const selection=result.filter(o=>fallbackOfferCategory(o)===group.id);
   if(!selection.length)return '';
-  const cards=selection.map(o=>{
+  // Na visão geral, evita despejar 63 DevKits em uma única rolagem no celular.
+  const compact=offerCategoryFilter==='todos'&&!query&&offerStateFilter==='todos'&&selection.length>6;
+  const visible=compact?selection.slice(0,6):selection;
+  const cards=visible.map(o=>{
    const status=o._template?['Preço pendente','warn']:o.active?['Publicada','ok']:
     offerReadiness?.offers?.find(x=>x.id===o.id)?.ready?['Arquivo validado','ok']:['Rascunho',''];
    const amount=o._template?'<span class="amount pending-price">Preço a definir</span>':'<span class="amount">'+money(o.price_cents)+'</span>';
@@ -231,7 +234,8 @@ function renderOfferCatalog(){
     '<div class="card-bottom">'+amount+action+'</div></article>';
   }).join('');
   return '<section class="offer-group" aria-label="'+esc(group.title)+'"><div class="offer-group-header"><div><h2>'+esc(group.title)+
-   '</h2><p>'+esc(group.description)+'</p></div><span class="offer-group-count">'+selection.length+'</span></div><div class="offer-grid">'+cards+'</div></section>';
+   '</h2><p>'+esc(group.description)+'</p></div><span class="offer-group-count">'+selection.length+'</span></div><div class="offer-grid">'+cards+'</div>'+
+   (compact?'<button class="quiet offer-show-all" type="button" data-offer-category="'+esc(group.id)+'">Ver todos os '+selection.length+' itens de '+esc(group.title)+' →</button>':'')+'</section>';
  }).join('');
  el('offers-list').innerHTML=html||'<div class="catalog-empty">'+empty(items.length?'Nenhuma oferta corresponde aos filtros':'Seu catálogo começa aqui',items.length?'Mude o filtro ou a busca para ver outros itens.':'Crie a primeira oferta como rascunho.')+'</div>';
 }
