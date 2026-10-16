@@ -43,12 +43,15 @@ try{
  await page.locator('[data-offer-category="cursos"]').click();
  const trail=page.locator('[data-hub-template="trilha-pentest-ethical-hacking"]');
  await trail.waitFor();
- assert.equal(await page.locator('[data-hub-template]').count(),7);
+ assert.equal(await page.locator('[data-hub-template]').count(),8);
  assert.equal(await page.locator('[data-offer-category="cursos"]').count(),1);
  await page.getByText('Trilhas com IA',{exact:true}).waitFor();
- assert.equal(await page.locator('[data-hub-template="engenharia-reversa-com-ia"]').count(),0);
+ assert.equal(await page.locator('[data-hub-template="engenharia-reversa-com-ia"]').count(),1);
  const reverseCard=page.locator('.offer-card').filter({hasText:'Engenharia Reversa com IA'});
- assert.equal(await reverseCard.getByRole('button',{name:'Aguardando aulas'}).isDisabled(),true);
+ await reverseCard.getByRole('button',{name:'Definir preço'}).click();
+ assert.equal(await page.locator('#field-price').inputValue(),'');
+ assert.equal(await page.locator('#field-productId').inputValue(),'hubestudos-course-engenharia-reversa-com-ia');
+ await page.locator('#close-modal').click();
  for(const id of ['desenvolvimento-com-ia','automacao-canal-dark'])assert.equal(await page.locator('[data-hub-template="'+id+'"]').count(),1);
  await trail.click();
  assert.equal(await page.locator('#field-price').inputValue(),'');
