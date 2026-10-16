@@ -234,3 +234,29 @@ test('pedido DevKit / sistema não exige nem propaga buyer binding',async()=>{
   assert.equal(created.data.order.productId,'pdv-artisys');
  }finally{await t.dispose();}
 });
+
+
+test('cinco modelos de trilhas ficam sem preço e fora do checkout até criação explícita de oferta',async()=>{
+ const t=await setup();try{
+  const unauthorized=await t.call('/v1/admin/offers');
+  assert.equal(unauthorized.status,401);
+  const before=await t.call('/v1/admin/offers','GET',null,admin);
+  assert.equal(before.data.templates.length,5);
+  assert.ok(before.data.templates.every(x=>x.priceCents===null&&!x.active));
+  assert.equal((await t.call('/v1/catalog')).data.offers.length,0);
+  const template=before.data.templates[0];
+  const result=await t.call('/v1/admin/offers','POST',{
+   id:template.id,productId:template.productId,name:template.name,
+   description:template.description,priceCents:9900,saleType:'one_time',
+   deliveryMode:'webhook',active:false
+  },admin);
+  assert.equal(result.status,200);
+  const after=await t.call('/v1/admin/offers','GET',null,admin);
+  assert.equal(after.data.templates.length,4);
+  const persisted=after.data.offers.find(x=>x.id===template.id);
+  assert.equal(persisted.category,'cursos');
+  assert.equal(persisted.price_cents,9900);
+  assert.equal(persisted.active,0);
+  assert.equal((await t.call('/v1/catalog')).data.offers.length,0);
+ }finally{await t.dispose();}
+});

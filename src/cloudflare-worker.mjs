@@ -2,6 +2,7 @@ import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent
 import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
+import {offerCategory,courseTemplatesPending} from './hub-course-catalog.mjs';
 import {publishVerifiedSystems} from './system-offer-publication.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
 import {devkitReleaseAdmin} from './devkit-release-admin.mjs';
@@ -422,7 +423,10 @@ async function process(request,env,ctx){
    let connections={};try{connections=isObj(JSON.parse(env.PRODUCT_CONNECTORS_JSON||'{}'));}catch{}
    return send({summary:{...summary,failedEvents:broken.count},integrations:Object.entries(connections).map(([productId,x])=>({productId,configured:!!(x?.url&&x?.secret)}))});
   }
-  if(method==='GET'&&path==='/v1/admin/offers')return send({offers:await rows(d,'SELECT * FROM offers ORDER BY updated_at DESC LIMIT 200')});
+  if(method==='GET'&&path==='/v1/admin/offers'){
+    const existing=await rows(d,'SELECT * FROM offers ORDER BY updated_at DESC LIMIT 200');
+    return send({offers:existing.map(x=>({...x,category:offerCategory(x)})),templates:courseTemplatesPending(existing)});
+   }
   if(method==='GET'&&path==='/v1/admin/offer-readiness'){
    const all=await rows(d,'SELECT * FROM offers ORDER BY name');
    const approved=new Set((await rows(d,'SELECT artifact_name FROM release_approvals')).map(x=>x.artifact_name));
