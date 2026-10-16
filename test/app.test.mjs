@@ -236,12 +236,12 @@ test('pedido DevKit / sistema não exige nem propaga buyer binding',async()=>{
 });
 
 
-test('cinco modelos de trilhas ficam sem preço e fora do checkout até criação explícita de oferta',async()=>{
+test('oito modelos de trilhas ficam sem preço e fora do checkout até criação explícita de oferta',async()=>{
  const t=await setup();try{
   const unauthorized=await t.call('/v1/admin/offers');
   assert.equal(unauthorized.status,401);
   const before=await t.call('/v1/admin/offers','GET',null,admin);
-  assert.equal(before.data.templates.length,5);
+  assert.equal(before.data.templates.length,8);
   assert.ok(before.data.templates.every(x=>x.priceCents===null&&!x.active));
   assert.equal((await t.call('/v1/catalog')).data.offers.length,0);
   const template=before.data.templates[0];
@@ -252,11 +252,26 @@ test('cinco modelos de trilhas ficam sem preço e fora do checkout até criaçã
   },admin);
   assert.equal(result.status,200);
   const after=await t.call('/v1/admin/offers','GET',null,admin);
-  assert.equal(after.data.templates.length,4);
+  assert.equal(after.data.templates.length,7);
   const persisted=after.data.offers.find(x=>x.id===template.id);
   assert.equal(persisted.category,'cursos');
   assert.equal(persisted.price_cents,9900);
   assert.equal(persisted.active,0);
   assert.equal((await t.call('/v1/catalog')).data.offers.length,0);
+ }finally{await t.dispose();}
+});
+
+test('edição ou venda da trilha de engenharia reversa com IA é bloqueada até publicação editorial',async()=>{
+ const t=await setup();try{
+  const id='engenharia-reversa-com-ia';
+  const response=await t.call('/v1/admin/offers','POST',{
+   id,productId:'hubestudos-course-'+id,name:'Engenharia Reversa com IA',
+   priceCents:12900,saleType:'one_time',deliveryMode:'webhook',active:false
+  },admin);
+  assert.equal(response.status,409);
+  assert.equal(response.data.error,'unpublished_hub_course');
+  assert.equal((await t.call('/v1/catalog')).data.offers.length,0);
+  const adminOffers=await t.call('/v1/admin/offers','GET',null,admin);
+  assert.ok(adminOffers.data.templates.some(x=>x.id===id&&x.status==='draft'));
  }finally{await t.dispose();}
 });
