@@ -46,9 +46,9 @@ Em `/admin?screen=ofertas` as ofertas são agrupadas por **Sistemas** (4 instala
 Há busca por nome/ID, filtros por grupo e situação e cartões adaptados a dispositivos móveis.
 O agrupamento não altera identificadores existentes, pedidos, preços, arquivos no R2, segredos ou conectores.
 
-Os cinco modelos comerciais das **218 aulas** do HubEstudos são definidos em
+Os modelos comerciais das **cinco trilhas principais (218 aulas)** e das **três trilhas com IA (32 aulas cada)** são definidos em
 `src/hub-course-catalog.mjs`, com IDs `hubestudos-course-trilha-...`.
-Eles aparecem como **Preço a definir**, sem um preço fictício; não são linhas da
+Os cinco modelos principais e os dois de IA publicados aparecem como **Preço a definir**. A trilha **Engenharia Reversa com IA** é exibida com o aviso **Em preparação**, sem botão de precificação e com bloqueio também na API administrativa até a publicação editorial. Não são linhas da
 tabela `offers`, não aparecem em `/v1/catalog` e não podem gerar pedidos.
 
 Para configurar uma trilha: em **Cursos e trilhas**, toque **Definir preço**.

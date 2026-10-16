@@ -186,7 +186,7 @@ function renderOfferCatalog(){
  const templateItems=offerTemplates.map(t=>({
   id:t.id,product_id:t.productId,name:t.name,description:t.description||'',
   sale_type:t.saleType||'one_time',delivery_mode:'webhook',active:0,
-  price_cents:null,category:'cursos',_template:true,lessons:t.lessons
+  price_cents:null,category:'cursos',_template:true,lessons:t.lessons,trackKind:t.trackKind,status:t.status
  }));
  const items=[...offers,...templateItems];
  const categoryOptions=[{id:'todos',title:'Todos'},...OFFER_GROUPS.map(g=>({id:g.id,title:g.title}))];
@@ -216,20 +216,24 @@ function renderOfferCatalog(){
   (!query||[o.name,o.id,o.product_id,o.description].some(x=>String(x||'').toLocaleLowerCase('pt-BR').includes(query)))
  );
  el('offers-count').textContent=result.length+' de '+items.length+' ofertas e trilhas · '+templateItems.length+' trilhas aguardando preço';
+ const iaTrailIds=new Set(['desenvolvimento-com-ia','automacao-canal-dark','engenharia-reversa-com-ia']);
+ const isAiTrail=o=>iaTrailIds.has(o.id);
  const html=OFFER_GROUPS.map(group=>{
   const selection=result.filter(o=>fallbackOfferCategory(o)===group.id);
   if(!selection.length)return '';
   // Na visão geral, evita despejar 63 DevKits em uma única rolagem no celular.
-  const compact=offerCategoryFilter==='todos'&&!query&&offerStateFilter==='todos'&&selection.length>6;
-  const visible=compact?selection.slice(0,6):selection;
-  const cards=visible.map(o=>{
-   const status=o._template?['Preço pendente','warn']:o.active?['Publicada','ok']:
+  const compact=group.id!=='cursos'&&offerCategoryFilter==='todos'&&!query&&offerStateFilter==='todos'&&selection.length>6;
+  const ordered=group.id==='cursos'?[...selection].sort((a,b)=>Number(isAiTrail(a))-Number(isAiTrail(b))):selection;
+  const visible=compact?ordered.slice(0,6):ordered;
+  const cards=visible.map((o,i)=>{
+   const status=o._template&&o.status==='draft'?['Em preparação','warn']:o._template?['Preço pendente','warn']:o.active?['Publicada','ok']:
     offerReadiness?.offers?.find(x=>x.id===o.id)?.ready?['Arquivo validado','ok']:['Rascunho',''];
    const amount=o._template?'<span class="amount pending-price">Preço a definir</span>':'<span class="amount">'+money(o.price_cents)+'</span>';
-   const action=o._template?'<button class="secondary" data-hub-template="'+esc(o.id)+'" type="button">Definir preço →</button>':
+   const action=o._template&&o.status==='draft'?'<button class="secondary" type="button" disabled title="Aguardando publicação editorial no HubEstudos">Aguardando aulas</button>':o._template?'<button class="secondary" data-hub-template="'+esc(o.id)+'" type="button">Definir preço →</button>':
     '<button class="secondary" data-offer="'+esc(o.id)+'" type="button">Revisar →</button>';
-   const detail=o._template?'Pagamento único · Acesso via HubEstudos · '+o.lessons+' aulas':saleName(o.sale_type)+' · '+deliveryName(o.delivery_mode);
-   return '<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+
+   const detail=o._template?(o.status==='draft'?'Em preparação editorial · ': 'Pagamento único · Acesso via HubEstudos · ')+o.lessons+' aulas':saleName(o.sale_type)+' · '+deliveryName(o.delivery_mode);
+   const subheading=group.id==='cursos'&&(i===0||isAiTrail(o)!==isAiTrail(visible[i-1]))?'<div class="offer-subheading"><strong>'+(isAiTrail(o)?'Trilhas com IA':'Trilhas principais')+'</strong></div>':'';
+   return subheading+'<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+
     '</span><div><strong>'+esc(o.name)+'</strong><div class="small">'+esc(detail)+'</div></div></div>'+label(status)+'</div>'+
     '<div class="card-bottom">'+amount+action+'</div></article>';
   }).join('');

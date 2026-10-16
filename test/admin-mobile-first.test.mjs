@@ -86,6 +86,9 @@ test('catálogo é agrupado por sistema, DevKit e curso com busca, contagem e pr
  assert.match(js,/offerStateFilter/);
  assert.match(js,/data-hub-template/);
  assert.match(js,/Preço a definir/);
+ assert.match(js,/Trilhas com IA/);
+ assert.match(js,/Em preparação editorial/);
+ assert.match(js,/Aguardando aulas/);
  assert.match(js,/price:'',saleType:'one_time'/);
  assert.match(css,/\.offer-grid\{display:grid/);
  assert.match(css,/@media\(max-width:799px\)\{\.catalog-toolbar/);

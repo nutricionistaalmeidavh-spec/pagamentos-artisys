@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createCheckout, checkoutAmountCents, verifyCheckoutPayment, verifyPaymentEvent } from './asaas.mjs';
 import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
-import {offerCategory,courseTemplatesPending} from './hub-course-catalog.mjs';
+import {offerCategory,courseTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -318,6 +318,7 @@ export function createApp(options={}) {
                 sale=String(p.saleType||'one_time'),delivery=String(p.deliveryMode||'manual'),
                 artifact=p.artifactName||null;
           if(!safeId(id)||!safeId(product)||!String(p.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw error('invalid_offer',400);
+                    if(isUnpublishedHubCourse(product))throw error('unpublished_hub_course',409);
           const now=stamp();
           run("INSERT INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,price_cents=excluded.price_cents,sale_type=excluded.sale_type,delivery_mode=excluded.delivery_mode,artifact_name=excluded.artifact_name,active=excluded.active,updated_at=excluded.updated_at",id,product,String(p.name).trim().slice(0,140),String(p.description||'').slice(0,500),price,sale,delivery,artifact,p.active?1:0,now,now);
           audit('offer_updated',id,{price,sale,delivery});

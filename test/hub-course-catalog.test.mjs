@@ -1,14 +1,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {HUB_COURSE_TEMPLATES,offerCategory,courseTemplatesPending} from '../src/hub-course-catalog.mjs';
+import {HUB_COURSE_TEMPLATES,offerCategory,courseTemplatesPending,isUnpublishedHubCourse} from '../src/hub-course-catalog.mjs';
 
 test('218 aulas estão agrupadas em cinco trilhas comerciais com IDs canônicos únicos',()=>{
- assert.equal(HUB_COURSE_TEMPLATES.length,5);
- assert.equal(HUB_COURSE_TEMPLATES.reduce((total,x)=>total+x.lessons,0),218);
- assert.equal(new Set(HUB_COURSE_TEMPLATES.map(x=>x.id)).size,5);
- assert.equal(new Set(HUB_COURSE_TEMPLATES.map(x=>x.productId)).size,5);
+ assert.equal(HUB_COURSE_TEMPLATES.length,8);
+ assert.equal(HUB_COURSE_TEMPLATES.filter(x=>x.trackKind==='principal').reduce((total,x)=>total+x.lessons,0),218);
+ assert.equal(HUB_COURSE_TEMPLATES.filter(x=>x.trackKind==='ia').length,3);
+ assert.equal(new Set(HUB_COURSE_TEMPLATES.map(x=>x.id)).size,8);
+ assert.equal(new Set(HUB_COURSE_TEMPLATES.map(x=>x.productId)).size,8);
  for(const t of HUB_COURSE_TEMPLATES){
-  assert.match(t.productId,/^hubestudos-course-trilha-[a-z0-9-]+$/);
+  assert.match(t.productId,/^hubestudos-course-[a-z0-9-]+$/);
   assert.equal(t.priceCents,null,'Não gravar preço simulado.');
   assert.equal(t.active,false);
   assert.equal(t.deliveryMode,'webhook');
@@ -29,8 +30,21 @@ test('modelos desaparecem individualmente após preço cadastrado, sem sobrescre
  const [first,second]=HUB_COURSE_TEMPLATES;
  const existing=[{id:first.id,product_id:first.productId,price_cents:12900,active:1}];
  const waiting=courseTemplatesPending(existing);
- assert.equal(waiting.length,4);
+ assert.equal(waiting.length,7);
  assert.ok(waiting.some(x=>x.id===second.id));
  assert.deepEqual(existing,[{id:first.id,product_id:first.productId,price_cents:12900,active:1}]);
  assert.equal(courseTemplatesPending(HUB_COURSE_TEMPLATES).length,0);
+});
+
+test('Meu Gestor e Canal com IA estão publicadas, engenharia reversa IA fica bloqueada',()=>{
+ const byId=Object.fromEntries(HUB_COURSE_TEMPLATES.map(x=>[x.id,x]));
+ for(const id of ['desenvolvimento-com-ia','automacao-canal-dark']){
+  assert.equal(byId[id].status,'published');
+  assert.equal(byId[id].lessons,32);
+  assert.equal(isUnpublishedHubCourse(byId[id].productId),false);
+ }
+ const reverse=byId['engenharia-reversa-com-ia'];
+ assert.equal(reverse.status,'draft');
+ assert.equal(reverse.lessons,32);
+ assert.equal(isUnpublishedHubCourse(reverse.productId),true);
 });
