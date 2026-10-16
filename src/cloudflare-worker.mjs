@@ -2,7 +2,7 @@ import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent
 import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
-import {offerCategory,courseTemplatesPending} from './hub-course-catalog.mjs';
+import {offerCategory,courseTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
 import {publishVerifiedSystems} from './system-offer-publication.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
 import {devkitReleaseAdmin} from './devkit-release-admin.mjs';
@@ -470,6 +470,7 @@ async function process(request,env,ctx){
   if(method==='POST'&&path==='/v1/admin/offers'){
    const v=isObj(await read(request)),id=String(v.id||''),pid=String(v.productId||''),price=Number(v.priceCents),sale=String(v.saleType||'one_time'),delivery=String(v.deliveryMode||'manual'),artifact=v.artifactName||null;
    if(!validId(id)||!validId(pid)||!String(v.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw fail('invalid_offer');
+   if(isUnpublishedHubCourse(pid))throw fail('unpublished_hub_course',409);
    if(v.active){
     if(env.PAYMENTS_ENABLED!=='true')throw fail('payments_not_enabled',409);
     if(!(env.MANUAL_PIX_KEY||(env.ASAAS_API_KEY&&env.ASAAS_WEBHOOK_TOKEN&&env.PUBLIC_BASE_URL)))
