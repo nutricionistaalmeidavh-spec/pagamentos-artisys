@@ -47,3 +47,4 @@
 .offer-grid .labels{margin:10px 0 13px}
 .catalog-empty{margin-top:15px}
 @media(max-width:799px){.catalog-toolbar{padding:15px 13px 11px}.catalog-toolbar .chip{font-size:12px;padding:7px 11px}.offer-grid{grid-template-columns:minmax(0,1fr);gap:12px}.offer-group{margin:20px 0 25px}.offer-group-header h2{font-size:18px}.offer-grid .offer-card{padding:17px}.offer-grid .card-bottom{gap:8px}.offer-grid .card-bottom .secondary{flex-shrink:0}.offer-grid .offer-heading strong{font-size:15px}}
+.offer-show-all{display:block;margin:12px auto 0;width:100%;max-width:400px}
