@@ -261,17 +261,19 @@ test('oito modelos de trilhas ficam sem preço e fora do checkout até criação
  }finally{await t.dispose();}
 });
 
-test('edição ou venda da trilha de engenharia reversa com IA é bloqueada até publicação editorial',async()=>{
+test('trilha Engenharia Reversa com IA publicada pode salvar valor manual como rascunho',async()=>{
  const t=await setup();try{
   const id='engenharia-reversa-com-ia';
   const response=await t.call('/v1/admin/offers','POST',{
    id,productId:'hubestudos-course-'+id,name:'Engenharia Reversa com IA',
    priceCents:12900,saleType:'one_time',deliveryMode:'webhook',active:false
   },admin);
-  assert.equal(response.status,409);
-  assert.equal(response.data.error,'unpublished_hub_course');
+  assert.equal(response.status,200);
+  assert.equal(response.data.offer.active,0);
+  assert.equal(response.data.offer.price_cents,12900);
   assert.equal((await t.call('/v1/catalog')).data.offers.length,0);
   const adminOffers=await t.call('/v1/admin/offers','GET',null,admin);
-  assert.ok(adminOffers.data.templates.some(x=>x.id===id&&x.status==='draft'));
+  assert.ok(adminOffers.data.offers.some(x=>x.id===id&&x.category==='cursos'));
+  assert.equal(adminOffers.data.templates.some(x=>x.id===id),false);
  }finally{await t.dispose();}
 });
