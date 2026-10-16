@@ -75,3 +75,18 @@ test('diagnóstico mobile não transforma eventos longos em pills sem limite',()
  assert.match(css,/\.data-list\s+dd\s+\.label/);
  assert.match(css,/overflow-wrap:\s*anywhere/);
 });
+
+
+test('catálogo é agrupado por sistema, DevKit e curso com busca, contagem e preço em branco',()=>{
+ for(const id of ['offer-search','offer-categories','offer-state-filters','offers-count']){
+  assert.match(html,new RegExp('id="'+id+'"'));
+ }
+ assert.match(js,/Cursos e trilhas/);
+ assert.match(js,/offerCategoryFilter/);
+ assert.match(js,/offerStateFilter/);
+ assert.match(js,/data-hub-template/);
+ assert.match(js,/Preço a definir/);
+ assert.match(js,/price:'',saleType:'one_time'/);
+ assert.match(css,/\.offer-grid\{display:grid/);
+ assert.match(css,/@media\(max-width:799px\)\{\.catalog-toolbar/);
+});
