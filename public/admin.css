@@ -17,3 +17,33 @@
 .release-row .card-bottom button{white-space:normal;max-width:100%}
 #releases-status:not(:empty){padding:10px 12px;background:var(--blue-soft);border:1px solid var(--line);border-radius:10px;font-size:13px;overflow-wrap:anywhere}
 @media(max-width:799px){.release-row .card-bottom{align-items:stretch;flex-direction:column}.release-row .card-bottom button{width:100%}}
+
+/* Catálogo agrupado: navegação compacta, legível no celular e sem mudar pedidos. */
+.catalog-toolbar{padding:18px 18px 12px;background:#fff;border:1px solid var(--line);border-radius:18px;margin-bottom:16px;box-shadow:var(--shadow)}
+.catalog-toolbar #offer-search{width:100%}
+.catalog-toolbar .filters{flex-wrap:wrap;overflow:visible;margin:8px 0 4px}
+.catalog-toolbar .chip{min-height:38px;padding:7px 12px}
+.catalog-filter-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:9px}
+.catalog-filter-row .search-label{margin:0;min-width:55px}
+.catalog-filter-row .filters{margin:0}
+.catalog-toolbar .results-note{margin:11px 0 0}
+.offer-group{margin:23px 0 30px}
+.offer-group-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin:0 0 11px}
+.offer-group-header h2{font-size:20px;line-height:1.25;margin:0;letter-spacing:-.035em;color:var(--navy)}
+.offer-group-header p{font-size:12px;line-height:1.45;margin:4px 0 0}
+.offer-group-count{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:4px 10px;background:#e8eff7;color:var(--navy);border-radius:99px;font-size:12px;font-weight:800}
+.offer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.offer-grid .offer-card{margin:0;min-width:0;display:flex;flex-direction:column;gap:0}
+.offer-grid .card-top{min-width:0;align-items:flex-start}
+.offer-grid .offer-heading{min-width:0;align-items:flex-start;flex:1}
+.offer-grid .offer-heading>div{min-width:0}
+.offer-grid .offer-heading strong{display:block;line-height:1.35;overflow-wrap:anywhere}
+.offer-grid .offer-card .small{overflow-wrap:anywhere;line-height:1.45}
+.offer-grid .offer-icon{flex:0 0 39px}
+.offer-grid .card-bottom{margin-top:auto;padding-top:13px;flex-wrap:wrap;align-items:center;gap:10px}
+.offer-grid .card-bottom .amount{color:var(--navy);font-size:18px;font-weight:790}
+.offer-grid .card-bottom .amount.pending-price{font-size:13px;color:#8b621d}
+.offer-grid .secondary{white-space:nowrap}
+.offer-grid .labels{margin:10px 0 13px}
+.catalog-empty{margin-top:15px}
+@media(max-width:799px){.catalog-toolbar{padding:15px 13px 11px}.catalog-toolbar .chip{font-size:12px;padding:7px 11px}.offer-grid{grid-template-columns:minmax(0,1fr);gap:12px}.offer-group{margin:20px 0 25px}.offer-group-header h2{font-size:18px}.offer-grid .offer-card{padding:17px}.offer-grid .card-bottom{gap:8px}.offer-grid .card-bottom .secondary{flex-shrink:0}.offer-grid .offer-heading strong{font-size:15px}}
