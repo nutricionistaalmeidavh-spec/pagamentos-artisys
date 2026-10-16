@@ -39,6 +39,16 @@ try{
  await page.screenshot({path:'qa-shots/02-pedidos-iphone.png',fullPage:true});
  await page.locator('[data-screen=ofertas]').click();
  await page.getByRole('heading',{name:'Ofertas'}).waitFor();
+ // As cinco trilhas são modelos, não ofertas no banco e nem itens no catálogo público.
+ await page.locator('[data-offer-category="cursos"]').click();
+ const trail=page.locator('[data-hub-template="trilha-pentest-ethical-hacking"]');
+ await trail.waitFor();
+ assert.equal(await page.locator('[data-hub-template]').count(),5);
+ await trail.click();
+ assert.equal(await page.locator('#field-price').inputValue(),'');
+ assert.equal(await page.locator('#field-productId').inputValue(),'hubestudos-course-trilha-pentest-ethical-hacking');
+ await page.locator('#close-modal').click();
+ await page.locator('[data-offer-category="todos"]').click();
  await page.locator('#new-offer').click();
  await page.locator('#field-id').fill('qa-offer-iphone');
  await page.locator('#field-productId').fill('qa-product');
