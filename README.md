@@ -37,3 +37,27 @@ Arquivos digitais em R2: releases/NOME_DO_ARQUIVO, servidos com token do comprad
 O motor Asaas pode ser homologado uma vez; novos produtos necessitam somente testar preço e conector. O primeiro deploy em conta nova requer verificação controlada de segredos, webhook, DNS, backups, rate limiting e primeiros pagamentos. Nenhum segredo ou instalação de produto existente é alterado.
 
 [Configuração Cloudflare](docs/CLOUDFLARE.md) · [Contrato de API](docs/openapi.yaml) · [Integrações de produtos](docs/INTEGRACAO.md)
+
+
+## Catálogo administrativo: Sistemas, DevKits e Cursos
+
+Em `/admin?screen=ofertas` as ofertas são agrupadas por **Sistemas** (4 instaladores),
+**DevKits** (63 módulos), **Cursos e trilhas** (HubEstudos) e **Outros produtos**.
+Há busca por nome/ID, filtros por grupo e situação e cartões adaptados a dispositivos móveis.
+O agrupamento não altera identificadores existentes, pedidos, preços, arquivos no R2, segredos ou conectores.
+
+Os cinco modelos comerciais das **218 aulas** do HubEstudos são definidos em
+`src/hub-course-catalog.mjs`, com IDs `hubestudos-course-trilha-...`.
+Eles aparecem como **Preço a definir**, sem um preço fictício; não são linhas da
+tabela `offers`, não aparecem em `/v1/catalog` e não podem gerar pedidos.
+
+Para configurar uma trilha: em **Cursos e trilhas**, toque **Definir preço**.
+O formulário já recebe ID, nome, descrição, entrega por webhook e modalidade.
+Digite o valor que desejar e use **Revisar e salvar**. A oferta real é criada
+**inativa**, sem acionar cobrança. O modelo desaparece apenas quando houver
+oferta com seu ID. Publicação futura exige o conector autorizado e as demais
+validações financeiras do Worker.
+
+As ofertas legadas são preservadas e continuam na categoria correspondente,
+sem exclusão ou republicação automática. A tela pode exibir ofertas legadas do
+HubEstudos como registros reais; sua desativação é uma ação comercial explícita.
