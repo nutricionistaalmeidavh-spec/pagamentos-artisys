@@ -12,7 +12,7 @@ export const HUB_COURSE_TEMPLATES=Object.freeze([
  // Três trilhas guiadas com IA; o estado editorial vem do catálogo canônico do Hub.
  {id:'desenvolvimento-com-ia',productId:'hubestudos-course-desenvolvimento-com-ia',name:'Desenvolvimento de Sistemas com IA',description:'Projeto Meu Gestor · 32 aulas guiadas',lessons:32,trackKind:'ia',status:'published'},
  {id:'automacao-canal-dark',productId:'hubestudos-course-automacao-canal-dark',name:'Automação de Canal com IA',description:'Automação de conteúdo · 32 aulas guiadas',lessons:32,trackKind:'ia',status:'published'},
- {id:'engenharia-reversa-com-ia',productId:'hubestudos-course-engenharia-reversa-com-ia',name:'Engenharia Reversa com IA',description:'Trilha de IA em preparação editorial · 32 aulas',lessons:32,trackKind:'ia',status:'draft'}
+ {id:'engenharia-reversa-com-ia',productId:'hubestudos-course-engenharia-reversa-com-ia',name:'Engenharia Reversa com IA',description:'Trilha Engenharia Reversa com IA · 32 aulas · 8 módulos editoriais A',lessons:32,trackKind:'ia',status:'published'}
 ].map(x=>Object.freeze({...x,description:x.description||'Trilha HubEstudos · '+x.lessons+' aulas',trackKind:x.trackKind||'principal',status:x.status||'published',saleType:'one_time',deliveryMode:'webhook',artifactName:null,active:false,priceCents:null,category:'cursos'})));
 
 export const isUnpublishedHubCourse=productId=>HUB_COURSE_TEMPLATES.some(x=>x.productId===productId&&x.status!=='published');
