@@ -50,6 +50,13 @@
     </section>
     <section class="screen" id="ofertas" aria-labelledby="ofertas-title" hidden>
       <div class="heading"><div><span class="eyebrow">Seu catálogo</span><h1 id="ofertas-title">Ofertas</h1><p>Prepare, revise e só publique quando estiver pronto.</p></div><button id="new-offer" class="primary" type="button">+ Nova oferta</button></div>
+      <div class="catalog-toolbar" aria-label="Explorar ofertas">
+        <label class="search-label" for="offer-search">Buscar produtos e trilhas</label>
+        <input id="offer-search" type="search" placeholder="Nome ou ID do produto" autocomplete="off">
+        <div id="offer-categories" class="filters" role="group" aria-label="Filtrar por categoria"></div>
+        <div class="catalog-filter-row"><span class="search-label">Situação</span><div id="offer-state-filters" class="filters" role="group" aria-label="Filtrar por situação"></div></div>
+        <div id="offers-count" class="results-note" aria-live="polite"></div>
+      </div>
       <div id="offers-info"></div><div id="offers-list" aria-live="polite"><div class="loading">Carregando catálogo…</div></div>
       <div class="section-heading"><h2>Cupons de desconto</h2><button class="quiet" id="new-coupon" type="button">Novo cupom</button></div>
       <div id="coupons-list" aria-live="polite"></div>
