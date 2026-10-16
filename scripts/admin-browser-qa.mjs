@@ -97,6 +97,7 @@ try{
  await page.locator('#import-catalog').waitFor();
  await page.locator('#import-catalog').click();
  await page.locator('#confirm-catalog-import').click();
+ await page.locator('[data-offer-category="devkits"]').click();
  await page.locator('#offers-list [data-offer="artisys-qa"]').waitFor();
  const check=await page.evaluate(async token=>{
   const headers={authorization:'Bearer '+token};
