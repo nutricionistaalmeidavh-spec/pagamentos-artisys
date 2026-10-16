@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createCheckout, checkoutAmountCents, verifyCheckoutPayment, verifyPaymentEvent } from './asaas.mjs';
 import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
+import {offerCategory,courseTemplatesPending} from './hub-course-catalog.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -308,7 +309,10 @@ export function createApp(options={}) {
           const summary=get("SELECT count(*) AS orders, coalesce(sum(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) AS receivedCents, sum(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending, sum(CASE WHEN status='refunded' THEN 1 ELSE 0 END) AS refunded FROM orders");
           return json(res,200,{summary:{...summary,failedEvents:get("SELECT count(*) AS count FROM provider_events WHERE status='failed'").count},integrations:Object.entries(connectionMap()).map(([productId,c])=>({productId,configured:!!(c?.url&&c?.secret)}))});
         }
-        if(method==='GET'&&path==='/v1/admin/offers')return json(res,200,{offers:all('SELECT * FROM offers ORDER BY updated_at DESC')});
+        if(method==='GET'&&path==='/v1/admin/offers'){
+          const existing=all('SELECT * FROM offers ORDER BY updated_at DESC');
+          return json(res,200,{offers:existing.map(x=>({...x,category:offerCategory(x)})),templates:courseTemplatesPending(existing)});
+        }
         if(method==='POST'&&path==='/v1/admin/offers'){
           const p=obj(await body(req)),id=String(p.id||''),product=String(p.productId||''),price=Number(p.priceCents),
                 sale=String(p.saleType||'one_time'),delivery=String(p.deliveryMode||'manual'),
