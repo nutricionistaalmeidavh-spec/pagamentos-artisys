@@ -36,15 +36,15 @@ test('modelos desaparecem individualmente após preço cadastrado, sem sobrescre
  assert.equal(courseTemplatesPending(HUB_COURSE_TEMPLATES).length,0);
 });
 
-test('Meu Gestor e Canal com IA estão publicadas, engenharia reversa IA fica bloqueada',()=>{
+test('as três trilhas IA estão publicadas com IDs canônicos',()=>{
  const byId=Object.fromEntries(HUB_COURSE_TEMPLATES.map(x=>[x.id,x]));
- for(const id of ['desenvolvimento-com-ia','automacao-canal-dark']){
+ for(const id of ['desenvolvimento-com-ia','automacao-canal-dark','engenharia-reversa-com-ia']){
   assert.equal(byId[id].status,'published');
   assert.equal(byId[id].lessons,32);
   assert.equal(isUnpublishedHubCourse(byId[id].productId),false);
  }
  const reverse=byId['engenharia-reversa-com-ia'];
- assert.equal(reverse.status,'draft');
+ assert.equal(reverse.status,'published');
  assert.equal(reverse.lessons,32);
- assert.equal(isUnpublishedHubCourse(reverse.productId),true);
+ assert.equal(isUnpublishedHubCourse(reverse.productId),false);
 });
