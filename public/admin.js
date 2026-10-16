@@ -6,7 +6,7 @@ const icons={home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1
 const icon=name=>'<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[name]||icons.shield)+'</svg>';
 document.querySelectorAll('[data-icon]').forEach(n=>n.innerHTML=icon(n.dataset.icon));
 const key='artisys-payment-admin';
-let token=sessionStorage.getItem(key)||'',screen='inicio',filter='todos',orders=[],offers=[],coupons=[],summary=null,fulfillments=[],events=[],integrations=[],health=null,catalogStatus=null,offerReadiness=null,offerDraft=null,lastFocus=null,modalMode='',busy=false;
+let token=sessionStorage.getItem(key)||'',screen='inicio',filter='todos',orders=[],offers=[],offerTemplates=[],offerCategoryFilter='todos',offerStateFilter='todos',coupons=[],summary=null,fulfillments=[],events=[],integrations=[],health=null,catalogStatus=null,offerReadiness=null,offerDraft=null,lastFocus=null,modalMode='',busy=false;
 const validScreens=['inicio','pedidos','ofertas','mais'];
 const paymentsOnline=()=>health?.paymentsEnabled===true;
 const paymentLabel=status=>{
@@ -62,7 +62,7 @@ async function load(name=screen){
   }else if(name==='ofertas'){
    el('offers-list').innerHTML='<div class="loading">Atualizando ofertas…</div>';
    const [a,c,h,s,cat,r]=await Promise.all([api('offers'),api('coupons'),publicStatus(),api('summary'),api('catalog-drafts/status'),api('offer-readiness')]);
-   offers=a.offers||[];coupons=c.coupons||[];health=h;integrations=s.integrations||[];catalogStatus=cat;offerReadiness=r;renderOffers();
+   offers=a.offers||[];offerTemplates=a.templates||[];coupons=c.coupons||[];health=h;integrations=s.integrations||[];catalogStatus=cat;offerReadiness=r;renderOffers();
   }else if(name==='mais'){
    for(const id of ['integrations-content','events-content','fulfillments-content'])el(id).innerHTML='<div class="loading">Atualizando…</div>';
    const [s,h,e,f,releases]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments'),api('system-releases')]);
@@ -168,6 +168,74 @@ function importCatalog(){
   await load('ofertas');
  }));
 }
+
+const OFFER_GROUPS=[
+ {id:'sistemas',title:'Sistemas',description:'Aplicativos e licenças dos sistemas ArtiSys.'},
+ {id:'devkits',title:'DevKits',description:'Ferramentas e módulos técnicos para desenvolvimento.'},
+ {id:'cursos',title:'Cursos e trilhas',description:'Acesso por trilha canônica, sem venda de aulas individuais.'},
+ {id:'outros',title:'Outros produtos',description:'Ofertas existentes fora das categorias principais.'}
+];
+const fallbackOfferCategory=o=>{
+ if(OFFER_GROUPS.some(g=>g.id===o.category))return o.category;
+ if(String(o.product_id||'').startsWith('hubestudos-'))return 'cursos';
+ if(['obra-na-mao','pdv-artisys-restaurantes','pdv-nexus','artisys-sistema-financeiro'].includes(o.id))return 'sistemas';
+ if(String(o.id||'').startsWith('artisys-'))return 'devkits';
+ return 'outros';
+};
+function renderOfferCatalog(){
+ const templateItems=offerTemplates.map(t=>({
+  id:t.id,product_id:t.productId,name:t.name,description:t.description||'',
+  sale_type:t.saleType||'one_time',delivery_mode:'webhook',active:0,
+  price_cents:null,category:'cursos',_template:true,lessons:t.lessons
+ }));
+ const items=[...offers,...templateItems];
+ const categoryOptions=[{id:'todos',title:'Todos'},...OFFER_GROUPS.map(g=>({id:g.id,title:g.title}))];
+ el('offer-categories').innerHTML=categoryOptions.filter(g=>g.id==='todos'||items.some(o=>fallbackOfferCategory(o)===g.id)).map(g=>{
+  const n=g.id==='todos'?items.length:items.filter(o=>fallbackOfferCategory(o)===g.id).length;
+  const selected=offerCategoryFilter===g.id;
+  return '<button class="chip'+(selected?' selected':'')+'" type="button" data-offer-category="'+esc(g.id)+'" aria-pressed="'+String(selected)+'">'+esc(g.title)+' · '+n+'</button>';
+ }).join('');
+ const statusChoices=[
+  {id:'todos',title:'Todas'},
+  {id:'publicadas',title:'Publicadas'},
+  {id:'rascunhos',title:'Rascunhos'},
+  {id:'sem-preco',title:'Sem preço'}
+ ];
+ el('offer-state-filters').innerHTML=statusChoices.map(o=>{
+  const selected=offerStateFilter===o.id;
+  return '<button class="chip'+(selected?' selected':'')+'" type="button" data-offer-state="'+esc(o.id)+'" aria-pressed="'+String(selected)+'">'+esc(o.title)+'</button>';
+ }).join('');
+ const query=String(el('offer-search').value||'').trim().toLocaleLowerCase('pt-BR');
+ const matchesState=o=>offerStateFilter==='todos'||
+  (offerStateFilter==='publicadas'&&!!o.active)||
+  (offerStateFilter==='rascunhos'&&!o.active)||
+  (offerStateFilter==='sem-preco'&&!!o._template);
+ const result=items.filter(o=>
+  (offerCategoryFilter==='todos'||fallbackOfferCategory(o)===offerCategoryFilter)&&
+  matchesState(o)&&
+  (!query||[o.name,o.id,o.product_id,o.description].some(x=>String(x||'').toLocaleLowerCase('pt-BR').includes(query)))
+ );
+ el('offers-count').textContent=result.length+' de '+items.length+' ofertas e trilhas · '+templateItems.length+' trilhas aguardando preço';
+ const html=OFFER_GROUPS.map(group=>{
+  const selection=result.filter(o=>fallbackOfferCategory(o)===group.id);
+  if(!selection.length)return '';
+  const cards=selection.map(o=>{
+   const status=o._template?['Preço pendente','warn']:o.active?['Publicada','ok']:
+    offerReadiness?.offers?.find(x=>x.id===o.id)?.ready?['Arquivo validado','ok']:['Rascunho',''];
+   const amount=o._template?'<span class="amount pending-price">Preço a definir</span>':'<span class="amount">'+money(o.price_cents)+'</span>';
+   const action=o._template?'<button class="secondary" data-hub-template="'+esc(o.id)+'" type="button">Definir preço →</button>':
+    '<button class="secondary" data-offer="'+esc(o.id)+'" type="button">Revisar →</button>';
+   const detail=o._template?'Pagamento único · Acesso via HubEstudos · '+o.lessons+' aulas':saleName(o.sale_type)+' · '+deliveryName(o.delivery_mode);
+   return '<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+
+    '</span><div><strong>'+esc(o.name)+'</strong><div class="small">'+esc(detail)+'</div></div></div>'+label(status)+'</div>'+
+    '<div class="card-bottom">'+amount+action+'</div></article>';
+  }).join('');
+  return '<section class="offer-group" aria-label="'+esc(group.title)+'"><div class="offer-group-header"><div><h2>'+esc(group.title)+
+   '</h2><p>'+esc(group.description)+'</p></div><span class="offer-group-count">'+selection.length+'</span></div><div class="offer-grid">'+cards+'</div></section>';
+ }).join('');
+ el('offers-list').innerHTML=html||'<div class="catalog-empty">'+empty(items.length?'Nenhuma oferta corresponde aos filtros':'Seu catálogo começa aqui',items.length?'Mude o filtro ou a busca para ver outros itens.':'Crie a primeira oferta como rascunho.')+'</div>';
+}
+
 function renderOffers(){
  el('offers-info').innerHTML=!paymentsOnline()?'<div class="notice"><span>'+icon('shield')+'</span><div><strong>Publicação suspensa</strong><p>Cobranças estão desativadas. Crie e edite ofertas como rascunho; a publicação será liberada após verificação da operação.</p></div></div>':'';
  const pending=Number(catalogStatus?.missing||0);
@@ -179,7 +247,7 @@ function renderOffers(){
   '<p>Arquivos no R2 são verificados por SHA-256. Dev Kits também exigem conferência de licenças e documentação antes da venda.</p>'+
   (draftSystems.some(x=>!x.active&&x.delivery_mode==='manual')?'<button class="secondary" type="button" id="prepare-systems">Preparar downloads dos quatro sistemas</button>':'')+
   '</section>';
- el('offers-list').innerHTML=offers.length?'<div class="cards">'+offers.map(o=>'<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+'</span><div><strong>'+esc(o.name)+'</strong><div class="small">'+esc(saleName(o.sale_type))+' · '+esc(deliveryName(o.delivery_mode))+'</div></div></div>'+label(o.active?['Publicada','ok']:offerReadiness?.offers?.find(x=>x.id===o.id)?.ready?['Arquivo validado','ok']:['Rascunho',''])+'</div><div class="card-bottom"><span class="amount">'+money(o.price_cents)+'</span><button class="secondary" data-offer="'+esc(o.id)+'" type="button">Revisar →</button></div></article>').join('')+'</div>':empty('Seu catálogo começa aqui','Crie a primeira oferta. Ela ficará em rascunho até você revisar e publicar.','<button class="primary" type="button" data-new-offer>+ Nova oferta</button>');
+ renderOfferCatalog();
  el('coupons-list').innerHTML=coupons.length?'<div class="surface ops-card">'+coupons.map(c=>'<div class="card-bottom" style="margin:0;padding:10px 0"><span><strong>'+esc(c.code)+'</strong><span class="small"> · '+esc(c.percent_off)+'% de desconto</span></span>'+label(c.active?['Ativo','ok']:['Inativo',''])+'</div>').join('')+'</div>':empty('Nenhum cupom cadastrado','Se precisar de uma promoção, crie um cupom para calcular o desconto no servidor.');
 }
 function renderMore(){
@@ -341,8 +409,11 @@ function publicationBlock(o){
 }
 const valuesFromOffer=o=>o?{id:o.id,productId:o.product_id,name:o.name,description:o.description||'',price:(o.price_cents/100).toFixed(2),saleType:o.sale_type,deliveryMode:o.delivery_mode,artifactName:o.artifact_name||'',active:!!o.active}: {id:'',productId:'',name:'',description:'',price:'',saleType:'one_time',deliveryMode:'manual',artifactName:'',active:false};
 let step=1;
-function offerWizard(id=''){
- offerDraft=valuesFromOffer(offers.find(x=>x.id===id));step=1;renderWizard();
+function offerWizard(id='',template=null){
+ offerDraft=template?{...valuesFromOffer(null),id:template.id,productId:template.productId,
+  name:template.name,description:template.description||'',price:'',saleType:'one_time',
+  deliveryMode:'webhook',active:false}:valuesFromOffer(offers.find(x=>x.id===id));
+ step=1;renderWizard();
 }
 const field=(label,name,value,type='text',extra='')=>'<div class="field"><label for="field-'+name+'">'+esc(label)+'</label><input id="field-'+name+'" name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+extra+'></div>';
 const option=(x,label,selected)=>'<option value="'+x+'" '+(x===selected?'selected':'')+'>'+label+'</option>';
@@ -419,6 +490,9 @@ document.addEventListener('click',e=>{
  if(button.dataset.filter){filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>{const on=b===button;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on));});renderOrders();return;}
  if(button.dataset.order){openOrder(button.dataset.order);return;}
  if(button.dataset.offer){openOffer(button.dataset.offer);return;}
+ if(button.dataset.offerCategory){offerCategoryFilter=button.dataset.offerCategory;renderOfferCatalog();return;}
+ if(button.dataset.offerState){offerStateFilter=button.dataset.offerState;renderOfferCatalog();return;}
+ if(button.dataset.hubTemplate){const t=offerTemplates.find(x=>x.id===button.dataset.hubTemplate);if(t)offerWizard('',t);return;}
  if(button.id==='import-catalog'){importCatalog();return;}
  if(button.id==='prepare-systems'){prepareSystems();return;}
  if(button.dataset.reviewLicense){licenseReview(button.dataset.reviewLicense);return;}
@@ -445,6 +519,7 @@ document.addEventListener('click',e=>{
  }
 });
 el('order-search').addEventListener('input',renderOrders);
+el('offer-search').addEventListener('input',renderOfferCatalog);
 el('release-file-input').addEventListener('change',async e=>{const file=e.target.files?.[0],item=selectedRelease;if(file&&item)await uploadRelease(file,item);});
 el('modal-backdrop').addEventListener('click',e=>{if(e.target===el('modal-backdrop'))closeModal();});
 el('close-modal').addEventListener('click',closeModal);
