@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createCheckout, checkoutAmountCents, verifyCheckoutPayment, verifyPaymentEvent } from './asaas.mjs';
-import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
+import {isHubProduct,needsBuyerBinding,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 import {offerCategory,courseTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -167,7 +167,7 @@ export function createApp(options={}) {
             }
             const target=new URL(connector.url),allowed=String(env.CONNECTOR_ALLOWED_ORIGINS||'').split(',').map(x=>x.trim());
             if(target.protocol!=='https:'||!allowed.includes(target.origin)||target.username||target.password)throw new Error('connector_origin_not_allowed');
-            const binding=isHubProduct(job.product_id)?get('SELECT binding FROM order_buyer_bindings WHERE order_id=?',job.order_id):null;
+            const binding=needsBuyerBinding(job.product_id)?get('SELECT binding FROM order_buyer_bindings WHERE order_id=?',job.order_id):null;
             if(isHubProduct(job.product_id)&&!binding?.binding)throw Error('buyer_binding_missing');
             const payload=JSON.stringify({event:'artisys.'+(job.action==='revoke'?'license.revoke':job.action.startsWith('renew:')?'license.renew':'license.activate'),orderId:job.order_id,productId:job.product_id,email:job.customer_email,customerName:job.customer_name,amountCents:job.amount_cents,currency:job.currency,saleType:job.sale_type,...checkoutBinding(job.product_id,binding?.binding),...(isHubProduct(job.product_id)?{orderCreatedAt:job.order_created_at}:{}),idempotencyKey:job.id});
             const signedAt=String(Date.now()),signature=createHmac('sha256',connector.secret).update(signedAt+'.'+payload).digest('hex');
