@@ -1,5 +1,5 @@
 import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
-import {isHubProduct,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
+import {isHubProduct,needsBuyerBinding,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
 import {offerCategory,courseTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
@@ -154,8 +154,8 @@ async function deliver(env,job){
   const uri=new URL(target.url);
   if(uri.protocol!=='https:'||!origin.includes(uri.origin)||uri.username||uri.password)throw Error('connector_origin_rejected');
   const action=job.action==='revoke'?'license.revoke':job.action.startsWith('renew:')?'license.renew':'license.activate';
-  const buyerRow=isHubProduct(order.product_id)?await one(env.PAGAMENTO_ARTISYS_DB,'SELECT binding FROM order_buyer_bindings WHERE order_id=?',order.id):null;
-  if(isHubProduct(order.product_id)&&!buyerRow?.binding)throw Error('buyer_binding_missing');
+  const buyerRow=needsBuyerBinding(order.product_id)?await one(env.PAGAMENTO_ARTISYS_DB,'SELECT binding FROM order_buyer_bindings WHERE order_id=?',order.id):null;
+  if(needsBuyerBinding(order.product_id)&&!buyerRow?.binding)throw Error('buyer_binding_missing');
   const payload=JSON.stringify({event:'artisys.'+action,orderId:order.id,productId:order.product_id,email:order.customer_email,customerName:order.customer_name,amountCents:order.amount_cents,currency:order.currency,saleType:order.sale_type,...checkoutBinding(order.product_id,buyerRow?.binding),...(isHubProduct(order.product_id)?{orderCreatedAt:order.created_at}:{}),idempotencyKey:job.id});
   const ts=String(Date.now()),signature=await hmac(target.secret,ts+'.'+payload);
   const response=await fetch(uri.toString(),{method:'POST',headers:{'content-type':'application/json','x-artisys-timestamp':ts,'x-artisys-signature':'sha256='+signature,'x-artisys-delivery-id':job.id},body:payload,signal:AbortSignal.timeout(10000),redirect:'error'});
