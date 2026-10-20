@@ -431,6 +431,7 @@ async function process(request,env,ctx){
   if(path.startsWith('/v1/admin/pdv/')){
    if(!allowedOrigin)throw fail('origin_not_allowed',403);
    const suffix=path.slice('/v1/admin/pdv/'.length);
+   if(method==='GET'&&suffix==='status')return send({configured:Boolean(env.PDV_TOTAL_PLATFORM_URL&&env.ARTISYS_PLATFORM_BRIDGE_SECRET?.length>=32)});
    if(method==='GET'&&['summary','tenants','audit'].includes(suffix))
     return forwardPdvPlatformAdmin(env,{action:suffix});
    if(method==='POST'&&suffix==='approve'){
