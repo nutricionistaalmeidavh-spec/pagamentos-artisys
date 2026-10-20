@@ -2,7 +2,8 @@ import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent
 import {isHubProduct,needsBuyerBinding,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
-import {offerCategory,courseTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
+import {offerCategory,commercialTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
+import {PDV_SAAS_OFFER_TEMPLATES,validPdvSaasOffer} from './pdv-saas-offers.mjs';
 import {publishVerifiedSystems} from './system-offer-publication.mjs';
 import {systemReleaseAdmin} from './system-release-admin.mjs';
 import {devkitReleaseAdmin} from './devkit-release-admin.mjs';
@@ -70,6 +71,14 @@ async function insertMissingCatalogDrafts(db){
  const created=result.reduce((sum,item)=>sum+Number(item?.meta?.changes||0),0);
  return {expected:CATALOG_DRAFTS.length,created,alreadyExisting:CATALOG_DRAFTS.length-created,active:false};
 }
+async function insertMissingPdvSaasDrafts(db){
+ // Strictly additive, always inactive, with user-approved R$89/R$899; existing rows are untouched.
+ const stamp=now();
+ const result=await db.batch(PDV_SAAS_OFFER_TEMPLATES.map(t=>db.prepare(
+  "INSERT OR IGNORE INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?)"
+ ).bind(t.id,t.productId,t.name,t.description,t.priceCents,t.saleType,'webhook',null,0,stamp,stamp)));
+ return {created:result.reduce((n,row)=>n+Number(row?.meta?.changes||0),0)};
+}
 async function prepareSystemDrafts(db){
  const results=[];
  for(const [offerId] of SYSTEMS){
@@ -82,6 +91,7 @@ async function prepareSystemDrafts(db){
 }
 async function initialCatalogImport(env){
  const db=env.PAGAMENTO_ARTISYS_DB;
+ await insertMissingPdvSaasDrafts(db);
  const done=await one(db,"SELECT id FROM audit_logs WHERE kind='catalog_seed_completed' AND subject_id=? LIMIT 1",CATALOG_SOURCE);
  if(done)return;
  const result=await insertMissingCatalogDrafts(db);
@@ -298,6 +308,7 @@ async function process(request,env,ctx){
   if(!validEmail(email)||!validId(v.offerId)||idem.length<16||idem.length>120)throw fail('invalid_order');
   const offer=await one(d,'SELECT * FROM offers WHERE id=? AND active=1',v.offerId);
   if(!offer)throw fail('offer_not_available',404);
+  if(!validPdvSaasOffer(offer.id,offer.product_id,offer.sale_type,offer.delivery_mode,offer.artifact_name))throw fail('pdv_total_offer_contract_invalid',409);
   let buyerBinding=null;
   try{buyerBinding=bindingForOffer(offer.product_id,offer.delivery_mode,v.buyerBinding);}
   catch(e){throw fail(e.message,400);}
@@ -425,7 +436,7 @@ async function process(request,env,ctx){
   }
   if(method==='GET'&&path==='/v1/admin/offers'){
     const existing=await rows(d,'SELECT * FROM offers ORDER BY updated_at DESC LIMIT 200');
-    return send({offers:existing.map(x=>({...x,category:offerCategory(x)})),templates:courseTemplatesPending(existing)});
+    return send({offers:existing.map(x=>({...x,category:offerCategory(x)})),templates:commercialTemplatesPending(existing)});
    }
   if(method==='GET'&&path==='/v1/admin/offer-readiness'){
    const all=await rows(d,'SELECT * FROM offers ORDER BY name');
@@ -471,6 +482,7 @@ async function process(request,env,ctx){
    const v=isObj(await read(request)),id=String(v.id||''),pid=String(v.productId||''),price=Number(v.priceCents),sale=String(v.saleType||'one_time'),delivery=String(v.deliveryMode||'manual'),artifact=v.artifactName||null;
    if(!validId(id)||!validId(pid)||!String(v.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw fail('invalid_offer');
    if(isUnpublishedHubCourse(pid))throw fail('unpublished_hub_course',409);
+   if(!validPdvSaasOffer(id,pid,sale,delivery,artifact))throw fail('pdv_total_offer_contract_invalid',409);
    if(v.active){
     if(env.PAYMENTS_ENABLED!=='true')throw fail('payments_not_enabled',409);
     if(!(env.MANUAL_PIX_KEY||(env.ASAAS_API_KEY&&env.ASAAS_WEBHOOK_TOKEN&&env.PUBLIC_BASE_URL)))
