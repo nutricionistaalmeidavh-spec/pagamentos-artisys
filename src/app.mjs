@@ -6,7 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createCheckout, checkoutAmountCents, verifyCheckoutPayment, verifyPaymentEvent } from './asaas.mjs';
 import {isHubProduct,needsBuyerBinding,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
-import {offerCategory,courseTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
+import {offerCategory,commercialTemplatesPending,isUnpublishedHubCourse} from './hub-course-catalog.mjs';
+import {PDV_SAAS_OFFER_TEMPLATES,validPdvSaasOffer} from './pdv-saas-offers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -51,6 +52,12 @@ export function createApp(options={}) {
   const all=(q,...v)=>db.prepare(q).all(...v);
   const run=(q,...v)=>db.prepare(q).run(...v);
   const txn=fn=>{ db.exec('BEGIN IMMEDIATE'); try{const result=fn(); db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;} };
+  // The canonical SaaS plans reuse this payment system, without new Asaas integration.
+  // Insert only absent, inactive offers; never mutate existing published offers.
+  txn(()=>{for(const t of PDV_SAAS_OFFER_TEMPLATES){
+    run("INSERT OR IGNORE INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?)",
+      t.id,t.productId,t.name,t.description,t.priceCents,t.saleType,t.deliveryMode,null,0,stamp(),stamp());
+  }});
   const fetchImpl=options.fetchImpl||fetch;
   const releases=resolve(env.RELEASES_DIR||join(dirname(dbPath),'releases'));
   const origins=String(env.PUBLIC_ORIGINS||'').split(',').map(x=>x.trim()).filter(Boolean);
@@ -230,6 +237,7 @@ export function createApp(options={}) {
         if(!isEmail(email)||!safeId(input.offerId)||idem.length<16||idem.length>120)throw error('invalid_order',400);
         const offer=get('SELECT * FROM offers WHERE id=? AND active=1',input.offerId);
         if(!offer)throw error('offer_not_available',404);
+        if(!validPdvSaasOffer(offer.id,offer.product_id,offer.sale_type,offer.delivery_mode,offer.artifact_name))throw error('pdv_total_offer_contract_invalid',409);
         let buyerBinding=null;
         try{buyerBinding=bindingForOffer(offer.product_id,offer.delivery_mode,input.buyerBinding);}
         catch(e){throw error(e.message,400);}
@@ -311,7 +319,7 @@ export function createApp(options={}) {
         }
         if(method==='GET'&&path==='/v1/admin/offers'){
           const existing=all('SELECT * FROM offers ORDER BY updated_at DESC');
-          return json(res,200,{offers:existing.map(x=>({...x,category:offerCategory(x)})),templates:courseTemplatesPending(existing)});
+          return json(res,200,{offers:existing.map(x=>({...x,category:offerCategory(x)})),templates:commercialTemplatesPending(existing)});
         }
         if(method==='POST'&&path==='/v1/admin/offers'){
           const p=obj(await body(req)),id=String(p.id||''),product=String(p.productId||''),price=Number(p.priceCents),
@@ -319,6 +327,7 @@ export function createApp(options={}) {
                 artifact=p.artifactName||null;
           if(!safeId(id)||!safeId(product)||!String(p.name||'').trim()||!Number.isInteger(price)||price<1||price>100000000||!['one_time','monthly','yearly'].includes(sale)||!['manual','download','webhook'].includes(delivery)||(artifact&&!validArtifact(artifact)))throw error('invalid_offer',400);
                     if(isUnpublishedHubCourse(product))throw error('unpublished_hub_course',409);
+          if(!validPdvSaasOffer(id,product,sale,delivery,artifact))throw error('pdv_total_offer_contract_invalid',409);
           const now=stamp();
           run("INSERT INTO offers(id,product_id,name,description,price_cents,currency,sale_type,delivery_mode,artifact_name,active,created_at,updated_at) VALUES(?,?,?,?,?,'BRL',?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,price_cents=excluded.price_cents,sale_type=excluded.sale_type,delivery_mode=excluded.delivery_mode,artifact_name=excluded.artifact_name,active=excluded.active,updated_at=excluded.updated_at",id,product,String(p.name).trim().slice(0,140),String(p.description||'').slice(0,500),price,sale,delivery,artifact,p.active?1:0,now,now);
           audit('offer_updated',id,{price,sale,delivery});

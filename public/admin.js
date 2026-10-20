@@ -178,7 +178,7 @@ const OFFER_GROUPS=[
 const fallbackOfferCategory=o=>{
  if(OFFER_GROUPS.some(g=>g.id===o.category))return o.category;
  if(String(o.product_id||'').startsWith('hubestudos-'))return 'cursos';
- if(['obra-na-mao','pdv-artisys-restaurantes','pdv-nexus','artisys-sistema-financeiro'].includes(o.id))return 'sistemas';
+ if(['obra-na-mao','pdv-artisys-restaurantes','pdv-nexus','artisys-sistema-financeiro','pdv-total-saas-mensal','pdv-total-saas-anual'].includes(o.id)||o.product_id==='pdv-total-saas')return 'sistemas';
  if(String(o.id||'').startsWith('artisys-'))return 'devkits';
  return 'outros';
 };
@@ -186,7 +186,7 @@ function renderOfferCatalog(){
  const templateItems=offerTemplates.map(t=>({
   id:t.id,product_id:t.productId,name:t.name,description:t.description||'',
   sale_type:t.saleType||'one_time',delivery_mode:'webhook',active:0,
-  price_cents:null,category:'cursos',_template:true,lessons:t.lessons,trackKind:t.trackKind,status:t.status
+  price_cents:t.priceCents??null,category:t.category||'cursos',_template:true,lessons:t.lessons||0,trackKind:t.trackKind,status:t.status
  }));
  const items=[...offers,...templateItems];
  const categoryOptions=[{id:'todos',title:'Todos'},...OFFER_GROUPS.map(g=>({id:g.id,title:g.title}))];
@@ -209,13 +209,13 @@ function renderOfferCatalog(){
  const matchesState=o=>offerStateFilter==='todos'||
   (offerStateFilter==='publicadas'&&!!o.active)||
   (offerStateFilter==='rascunhos'&&!o.active)||
-  (offerStateFilter==='sem-preco'&&!!o._template);
+  (offerStateFilter==='sem-preco'&&!!o._template&&o.price_cents==null);
  const result=items.filter(o=>
   (offerCategoryFilter==='todos'||fallbackOfferCategory(o)===offerCategoryFilter)&&
   matchesState(o)&&
   (!query||[o.name,o.id,o.product_id,o.description].some(x=>String(x||'').toLocaleLowerCase('pt-BR').includes(query)))
  );
- el('offers-count').textContent=result.length+' de '+items.length+' ofertas e trilhas · '+templateItems.length+' trilhas aguardando preço';
+ el('offers-count').textContent=result.length+' de '+items.length+' ofertas e modelos · '+templateItems.filter(t=>t.price_cents==null).length+' sem preço';
  const iaTrailIds=new Set(['desenvolvimento-com-ia','automacao-canal-dark','engenharia-reversa-com-ia']);
  const isAiTrail=o=>iaTrailIds.has(o.id);
  const html=OFFER_GROUPS.map(group=>{
@@ -226,12 +226,12 @@ function renderOfferCatalog(){
   const ordered=group.id==='cursos'?[...selection].sort((a,b)=>Number(isAiTrail(a))-Number(isAiTrail(b))):selection;
   const visible=compact?ordered.slice(0,6):ordered;
   const cards=visible.map((o,i)=>{
-   const status=o._template&&o.status==='draft'?['Em preparação','warn']:o._template?['Preço pendente','warn']:o.active?['Publicada','ok']:
+   const status=o._template&&o.status==='draft'?['Em preparação','warn']:o._template?(o.price_cents==null?['Preço pendente','warn']:['Pronto para cadastrar','info']):o.active?['Publicada','ok']:
     offerReadiness?.offers?.find(x=>x.id===o.id)?.ready?['Arquivo validado','ok']:['Rascunho',''];
-   const amount=o._template?'<span class="amount pending-price">Preço a definir</span>':'<span class="amount">'+money(o.price_cents)+'</span>';
-   const action=o._template&&o.status==='draft'?'<button class="secondary" type="button" disabled title="Aguardando publicação editorial no HubEstudos">Aguardando aulas</button>':o._template?'<button class="secondary" data-hub-template="'+esc(o.id)+'" type="button">Definir preço →</button>':
+   const amount=o._template&&o.price_cents==null?'<span class="amount pending-price">Preço a definir</span>':'<span class="amount">'+money(o.price_cents)+'</span>';
+   const action=o._template&&o.status==='draft'?'<button class="secondary" type="button" disabled title="Aguardando publicação editorial no HubEstudos">Aguardando aulas</button>':o._template?'<button class="secondary" data-hub-template="'+esc(o.id)+'" type="button">'+(o.price_cents==null?'Definir preço →':'Cadastrar oferta →')+'</button>':
     '<button class="secondary" data-offer="'+esc(o.id)+'" type="button">Revisar →</button>';
-   const detail=o._template?(o.status==='draft'?'Em preparação editorial · ': 'Pagamento único · Acesso via HubEstudos · ')+o.lessons+' aulas':saleName(o.sale_type)+' · '+deliveryName(o.delivery_mode);
+   const detail=o._template&&o.category==='cursos'?(o.status==='draft'?'Em preparação editorial · ': 'Pagamento único · Acesso via HubEstudos · ')+o.lessons+' aulas':saleName(o.sale_type)+' · '+deliveryName(o.delivery_mode);
    const subheading=group.id==='cursos'&&(i===0||isAiTrail(o)!==isAiTrail(visible[i-1]))?'<div class="offer-subheading"><strong>'+(isAiTrail(o)?'Trilhas com IA':'Trilhas principais')+'</strong></div>':'';
    return subheading+'<article class="surface offer-card"><div class="card-top"><div class="offer-heading"><span class="offer-icon">'+icon('package')+
     '</span><div><strong>'+esc(o.name)+'</strong><div class="small">'+esc(detail)+'</div></div></div>'+label(status)+'</div>'+
@@ -419,7 +419,7 @@ const valuesFromOffer=o=>o?{id:o.id,productId:o.product_id,name:o.name,descripti
 let step=1;
 function offerWizard(id='',template=null){
  offerDraft=template?{...valuesFromOffer(null),id:template.id,productId:template.productId,
-  name:template.name,description:template.description||'',price:'',saleType:'one_time',
+  name:template.name,description:template.description||'',price:template.priceCents==null?'':(template.priceCents/100).toFixed(2),saleType:template.saleType||'one_time',
   deliveryMode:'webhook',active:false}:valuesFromOffer(offers.find(x=>x.id===id));
  step=1;renderWizard();
 }

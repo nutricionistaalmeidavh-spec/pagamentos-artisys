@@ -75,3 +75,19 @@ Novos produtos: validar somente preço e conector idempotente de entrega. Mudan�
 6. Habilitar a oferta no site. Não modificar os demais aplicativos.
 
 A validação do gateway é responsabilidade do Pagamento ArtiSys e ocorre apenas quando o motor ou seu ambiente financeiro muda. Não se faz uma cobrança real a cada novo produto.
+
+
+## PDV TOTAL SaaS — usa este Pagamento ArtiSys, não outra conta Asaas
+
+A central existente continua proprietária da chave Asaas, do token do webhook, dos cupons e da conciliação de pagamentos; **nenhuma nova integração Asaas, chave de API, conta ou webhook são necessários só porque um novo produto é adicionado**. A `main` publica também os modelos comerciais do PDV TOTAL:
+
+| Oferta | Produto canônico | Preço | Período | Entrega |
+| --- | --- | --- | --- | --- |
+| `pdv-total-saas-mensal` | `pdv-total-saas` | **R$ 89,00** | `monthly` | `webhook` |
+| `pdv-total-saas-anual` | `pdv-total-saas` | **R$ 899,00** | `yearly` | `webhook` |
+
+O Worker registra **somente ofertas ausentes, sempre inativas**, durante a rotina já existente de catálogo; não altera preços, estados ou IDs dos itens previamente armazenados (incluindo DevKits, cursos e sistemas desktop). Se já existir uma oferta com o mesmo ID, confira seu preço no painel: um deploy **não sobrescreve um preço comercial anterior**. Os cartões aparecem em **Admin → Ofertas → Sistemas**, incluindo valor/modalidade e revisão normal do painel. A modalidade e o produto dessas duas ofertas são validados antes de gravar a oferta e criar pedidos. A publicação requer `PAYMENTS_ENABLED=true` no serviço existente e conector HMAC configurado; sem isso, os rascunhos não aparecem no catálogo público e não podem cobrar.
+
+A etapa **específica de novo produto**, e não de Asaas, é o conector `PRODUCT_CONNECTORS_JSON['pdv-total-saas']` apontando à rota HTTPS de entrega do PDV TOTAL (`/api/v1/integrations/artisys/billing`), com chave HMAC exclusiva e igual à secret `ARTISYS_BILLING_SECRET` no Worker PDV; `ARTISYS_BINDING_SECRET` permanece segredo diferente no PDV. Não duplicar conta, D1, token/webhook ou configuração financeira da central. O PDV verifica o `buyerBinding` para vincular a compra ao estabelecimento e **só ativa assinatura após pagamento confirmado**. O modo Cloudflare e o modo Node continuam compatíveis; o core gratuito/self-hosted do PDV não exige a central.
+
+Ao terminar o vínculo, confirmar status do conector em **Admin → Mais → Conectores de produtos**, publicar conscientemente as ofertas, testar cupons e checkout com a conta existente e confirmar ativação/renovação/revogação. Este procedimento não gera novas credenciais Asaas.
