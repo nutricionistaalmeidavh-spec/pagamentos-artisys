@@ -23,6 +23,18 @@ test('bridge accepts only tenant-management whitelist and rejects foreign arbitr
  await assert.rejects(forwardPdvPlatformAdmin({...env,PDV_TOTAL_PLATFORM_URL:'http://internal.local'},{action:'summary'}),/invalid|https/);
  await assert.rejects(forwardPdvPlatformAdmin({...env,ARTISYS_PLATFORM_BRIDGE_SECRET:''},{action:'summary'}),/configured|secret/);
 });
+
+test('bridge rejects upstream redirects without following them or exposing their location',async()=>{
+ for(const status of [301,302,303,307,308]){
+  let requests=0;
+  await assert.rejects(forwardPdvPlatformAdmin(env,{action:'summary'},{fetchImpl:async(url,options)=>{
+   requests++;
+   assert.equal(options.redirect,'manual');
+   return new Response(null,{status,headers:{location:'https://untrusted.example/collect'}});
+  }}),e=>e.status===502&&e.message==='pdv_platform_redirect_denied');
+  assert.equal(requests,1);
+ }
+});
 test('public browser sees a single central admin section, not platform tokens or a second login',()=>{
  const html=readFileSync(new URL('../public/admin.html',import.meta.url),'utf8');
  const js=readFileSync(new URL('../public/admin.js',import.meta.url),'utf8');
