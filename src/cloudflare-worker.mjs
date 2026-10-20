@@ -169,7 +169,7 @@ async function deliver(env,job){
   if(needsBuyerBinding(order.product_id)&&!buyerRow?.binding)throw Error('buyer_binding_missing');
   const payload=JSON.stringify({event:'artisys.'+action,orderId:order.id,productId:order.product_id,email:order.customer_email,customerName:order.customer_name,amountCents:order.amount_cents,currency:order.currency,saleType:order.sale_type,...checkoutBinding(order.product_id,buyerRow?.binding),...(isHubProduct(order.product_id)?{orderCreatedAt:order.created_at}:{}),idempotencyKey:job.id});
   const ts=String(Date.now()),signature=await hmac(target.secret,ts+'.'+payload);
-  const response=await fetch(uri.toString(),{method:'POST',headers:{'content-type':'application/json','x-artisys-timestamp':ts,'x-artisys-signature':'sha256='+signature,'x-artisys-delivery-id':job.id},body:payload,signal:AbortSignal.timeout(10000),redirect:'error'});
+  const response=await fetch(uri.toString(),{method:'POST',headers:{'content-type':'application/json','x-artisys-timestamp':ts,'x-artisys-signature':'sha256='+signature,'x-artisys-delivery-id':job.id},body:payload,signal:AbortSignal.timeout(10000),redirect:'manual'});
   const confirmation=await response.json().catch(()=>null);
   if(!response.ok||confirmation?.accepted!==true)throw Error('connector_delivery_unconfirmed');
  }
