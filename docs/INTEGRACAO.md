@@ -91,3 +91,11 @@ O Worker registra **somente ofertas ausentes, sempre inativas**, durante a rotin
 A etapa **específica de novo produto**, e não de Asaas, é o conector `PRODUCT_CONNECTORS_JSON['pdv-total-saas']` apontando à rota HTTPS de entrega do PDV TOTAL (`/api/v1/integrations/artisys/billing`), com chave HMAC exclusiva e igual à secret `ARTISYS_BILLING_SECRET` no Worker PDV; `ARTISYS_BINDING_SECRET` permanece segredo diferente no PDV. Não duplicar conta, D1, token/webhook ou configuração financeira da central. O PDV verifica o `buyerBinding` para vincular a compra ao estabelecimento e **só ativa assinatura após pagamento confirmado**. O modo Cloudflare e o modo Node continuam compatíveis; o core gratuito/self-hosted do PDV não exige a central.
 
 Ao terminar o vínculo, confirmar status do conector em **Admin → Mais → Conectores de produtos**, publicar conscientemente as ofertas, testar cupons e checkout com a conta existente e confirmar ativação/renovação/revogação. Este procedimento não gera novas credenciais Asaas.
+
+## Painel único ArtiSys: gerenciar PDV TOTAL
+
+A mesma sessão administrativa da central em \`/admin\` abre **Mais → PDV TOTAL · Empresas**. A central consulta empresas no D1 do PDV por canal assinado; não importa clientes para seu próprio D1 e não duplica a assinatura financeira. Permite consultar, aprovar solicitações pendentes e criar o primeiro estabelecimento. **Não permite alterar o status de assinatura paga**: confirmação de pagamento e entrega permanecem no fluxo Asaas já existente.
+
+Configurar no Worker \`pagamentos-artisys-central\`: variável \`PDV_TOTAL_PLATFORM_URL=https://pdv-artisys-total.nutricionistaalmeidavh.workers.dev\` e Secret \`ARTISYS_PLATFORM_BRIDGE_SECRET\` (aleatório de 32+ caracteres). No Worker \`pdv-artisys-total\`, colocar Secret \`ARTISYS_PLATFORM_BRIDGE_SECRET\` com o **mesmo valor**. Ative \`ARTISYS_PLATFORM_BRIDGE_ENABLED=true\` no PDV e verifique o painel. Depois do teste, habilite \`ARTISYS_PLATFORM_CENTRAL_ENABLED=true\` no PDV para desativar o superadmin antigo.
+
+Não modificar \`ADMIN_TOKEN\`, \`ASAAS_API_KEY\`, \`ASAAS_WEBHOOK_TOKEN\`, \`PRODUCT_CONNECTORS_JSON\` ou ofertas R$ 89/R$ 899. O segredo compartilhado é **específico da administração**; não reutilize o HMAC financeiro.

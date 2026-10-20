@@ -66,11 +66,74 @@ async function load(name=screen){
   }else if(name==='mais'){
    for(const id of ['integrations-content','events-content','fulfillments-content'])el(id).innerHTML='<div class="loading">Atualizando…</div>';
    const [s,h,e,f,releases]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments'),api('system-releases')]);
-   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();renderReleases(releases);
+   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();renderReleases(releases);await loadPdvTenants();
   }
   el('runtime-indicator').textContent=paymentsOnline()?'Cobranças habilitadas':'Cobranças desativadas';el('runtime-indicator').hidden=false;
  }catch(e){if(e.status===401){sessionStorage.removeItem(key);token='';signedIn(false);el('login-error').textContent='Sua sessão expirou. Entre novamente.';}else{showError(e,'Falha ao carregar');const id={inicio:'home-content',pedidos:'orders-list',ofertas:'offers-list',mais:'integrations-content'}[name];if(id)el(id).innerHTML=empty('Não foi possível carregar','Tente novamente usando Atualizar.');}}
 }
+let pdvTenants=[];
+async function loadPdvTenants(){
+ const target=el('pdv-tenants-content'),audit=el('pdv-audit-content');
+ target.innerHTML='<div class="loading">Consultando PDV TOTAL…</div>';
+ try{
+  const status=await api('pdv/status');
+  if(!status.configured){
+   target.innerHTML=empty('PDV TOTAL não conectado','Cadastre URL e segredo de integração no Worker central. A administração financeira continua disponível.');
+   audit.innerHTML='';
+   return;
+  }
+  const [list,events]=await Promise.all([api('pdv/tenants'),api('pdv/audit')]);
+  pdvTenants=list.tenants||[];
+  const pending=(list.pendingTenants||[]).length;
+  const cards=pdvTenants.map(t=>'<div class="surface ops-card"><div class="card-top"><strong>'+esc(t.name)+'</strong>'+label(t.active?['Ativa','ok']:['Pendente','warn'])+'</div>'+
+   '<p class="small">'+esc(t.ownerEmail||'Sem titular')+'</p>'+
+   '<div class="data-list"><div><dt>Assinatura no PDV</dt><dd>'+esc(t.subscriptionStatus||'Não definida')+'</dd></div>'+
+   '<div><dt>Plano</dt><dd>'+esc(t.planKey||'—')+'</dd></div>'+
+   '<div><dt>Vencimento</dt><dd>'+esc(t.endsAt?date(t.endsAt):'—')+'</dd></div></div>'+
+   (!t.active?'<div class="card-bottom"><button type="button" class="primary" data-pdv-approve="'+esc(t.id)+'">Aprovar cadastro</button></div>':'')+'</div>').join('');
+  target.innerHTML='<div class="notice"><span>'+icon('shield')+'</span><div><strong>Administração unificada</strong><p>'+pdvTenants.length+' empresa(s), '+pending+' pendente(s). O pagamento segue na central financeira.</p></div></div>'+
+   (cards||empty('Nenhuma empresa cadastrada','Crie a primeira empresa para iniciar a operação.'))+
+   (!pdvTenants.length?'<button type="button" class="secondary" id="pdv-bootstrap">Criar primeira empresa</button>':'');
+  const history=(events.events||[]).slice(0,15);
+  audit.innerHTML=history.length?'<div class="surface ops-card">'+history.map(e=>
+   '<div class="card-bottom"><span><strong>'+esc(e.kind)+'</strong><span class="small"> · '+esc(e.tenantId||'')+'</span></span><span class="small">'+esc(date(e.createdAt))+'</span></div>').join('')+'</div>':
+   '<p class="muted">Nenhuma operação administrativa registrada.</p>';
+ }catch{
+  target.innerHTML=empty('PDV TOTAL ainda não conectado','Verifique a implantação do PDV, a migration 0036 e o segredo de integração. Os pagamentos existentes continuam operando.');
+  audit.innerHTML='';
+ }
+}
+function approvePdvTenant(id){
+ const tenant=pdvTenants.find(t=>t.id===id&&!t.active);if(!tenant)return;
+ openModal('Aprovar empresa no PDV TOTAL',
+  '<h3>'+esc(tenant.name)+'</h3><p>Proprietário: '+esc(tenant.ownerEmail||'não informado')+
+  '</p><div class="warning-note">Aprovar inicia um período de avaliação. Confirme a identidade por canal independente antes de prosseguir.</div>'+
+  '<div class="form-actions"><button type="button" class="secondary" data-close>Cancelar</button><button type="button" class="primary" id="confirm-pdv-approve">Confirmar aprovação</button></div>');
+ el('confirm-pdv-approve').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
+  await api('pdv/approve','POST',{tenantId:id});
+  closeModal();toast('Cadastro aprovado no PDV TOTAL.');await loadPdvTenants();
+ }));
+}
+function bootstrapPdv(){
+ if(pdvTenants.length)return;
+ openModal('Primeiro estabelecimento do PDV TOTAL','<p>Somente para instalações sem empresa ativa. O proprietário terá acesso individual ao PDV.</p>'+
+  '<form id="pdv-bootstrap-form" class="form-stack">'+
+  field('Estabelecimento','name','','text','required minlength="3" maxlength="100"')+
+  field('Identificador','slug','','text','required pattern="[a-z0-9][a-z0-9-]{2,63}"')+
+  field('Nome do proprietário','ownerName','','text','required minlength="3" maxlength="100"')+
+  field('E-mail','email','','email','required')+
+  field('Senha inicial','password','','password','required minlength="12" autocomplete="new-password"')+
+  '<div class="form-actions"><button type="button" class="secondary" data-close>Cancelar</button><button type="submit" class="primary">Criar empresa</button></div></form>');
+ el('pdv-bootstrap-form').addEventListener('submit',e=>{e.preventDefault();
+  const form=e.currentTarget;if(!form.reportValidity())return;
+  const data=Object.fromEntries(new FormData(form).entries());
+  withBusy(form.querySelector('[type="submit"]'),async()=>{
+   await api('pdv/bootstrap','POST',data);form.reset();
+   closeModal();toast('Primeiro estabelecimento criado.');await loadPdvTenants();
+  });
+ });
+}
+
 function renderHome(){
  const s=summary||{},pending=fulfillments.filter(x=>x.status!=='delivered'),issues=fulfillments.filter(x=>['failed','waiting_configuration'].includes(x.status));
  let highlight='';
@@ -510,6 +573,9 @@ document.addEventListener('click',e=>{
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}
  if(button.dataset.unpublish!==undefined){changePublication(button.dataset.unpublish,false);return;}
  if(button.id==='diagnose-asaas'){checkAsaas(button);return;}
+ if(button.id==='pdv-refresh'){loadPdvTenants();return;}
+ if(button.dataset.pdvApprove){approvePdvTenant(button.dataset.pdvApprove);return;}
+ if(button.id==='pdv-bootstrap'){bootstrapPdv();return;}
  if(button.dataset.releaseUpload){const item=availableReleases.find(x=>x.id===button.dataset.releaseUpload);if(item){selectedRelease=item;el('release-file-input').value='';el('release-file-input').click();}return;}
  if(button.id==='new-coupon'){openCoupon();return;}
  if(button.hasAttribute('data-close')){closeModal();return;}

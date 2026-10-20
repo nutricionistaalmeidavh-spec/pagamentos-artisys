@@ -1,4 +1,5 @@
 import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
+import {forwardPdvPlatformAdmin} from './pdv-platform-admin.mjs';
 import {isHubProduct,needsBuyerBinding,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
 import {diagnoseAsaas} from './asaas-diagnostic.mjs';
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
@@ -427,6 +428,22 @@ async function process(request,env,ctx){
   if(!githubVerified)await admin(request,env);
   if(releaseRoute)return systemReleaseAdmin(request,env,{githubVerified});
   if(devkitRoute)return devkitReleaseAdmin(request,env,{githubVerified});
+  if(path.startsWith('/v1/admin/pdv/')){
+   if(!allowedOrigin)throw fail('origin_not_allowed',403);
+   const suffix=path.slice('/v1/admin/pdv/'.length);
+   if(method==='GET'&&suffix==='status')return send({configured:Boolean(env.PDV_TOTAL_PLATFORM_URL&&env.ARTISYS_PLATFORM_BRIDGE_SECRET?.length>=32)});
+   if(method==='GET'&&['summary','tenants','audit'].includes(suffix))
+    return forwardPdvPlatformAdmin(env,{action:suffix});
+   if(method==='POST'&&suffix==='approve'){
+    const data=isObj(await read(request));
+    return forwardPdvPlatformAdmin(env,{action:'approve',tenantId:data.tenantId});
+   }
+   if(method==='POST'&&suffix==='bootstrap'){
+    const data=isObj(await read(request));
+    return forwardPdvPlatformAdmin(env,{action:'bootstrap',data});
+   }
+   return send({error:'pdv_platform_action_denied'},403);
+  }
   if(method==='GET'&&path==='/v1/admin/asaas/diagnostic')return send(await diagnoseAsaas(env,fetch));
   if(method==='GET'&&path==='/v1/admin/summary'){
    const summary=await one(d,"SELECT count(*) AS orders,coalesce(sum(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) AS receivedCents,sum(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN status='refunded' THEN 1 ELSE 0 END) AS refunded FROM orders");
