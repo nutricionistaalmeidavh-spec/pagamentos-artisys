@@ -27,7 +27,7 @@ test('public browser sees a single central admin section, not platform tokens or
  const html=readFileSync(new URL('../public/admin.html',import.meta.url),'utf8');
  const js=readFileSync(new URL('../public/admin.js',import.meta.url),'utf8');
  assert.match(html,/id="pdv-tenants-content"/);
- assert.match(js,/api\\('pdv\\/tenants'\\)/);
- assert.match(js,/pdv\\/approve/);
+ assert.ok(js.includes("api('pdv/tenants')"));
+ assert.ok(js.includes("api('pdv/approve'"));
  assert.doesNotMatch(js,/PLATFORM_ADMIN_TOKEN|ARTISYS_PLATFORM_BRIDGE_SECRET/);
 });
