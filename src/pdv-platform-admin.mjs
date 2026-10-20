@@ -20,7 +20,8 @@ export async function forwardPdvPlatformAdmin(env,payload,{fetchImpl=fetch,now=D
  const response=await fetchImpl(url.origin+'/api/v1/integrations/artisys/platform',{method:'POST',
   headers:{'content-type':'application/json','x-artisys-platform-timestamp':timestamp,
    'x-artisys-platform-nonce':id,'x-artisys-platform-signature':'sha256='+sig},
-  body:plain,redirect:'error',signal:AbortSignal.timeout(8000)});
+  body:plain,redirect:'manual',signal:AbortSignal.timeout(8000)});
+ if(response.status>=300&&response.status<400)problem('pdv_platform_redirect_denied',502);
  const result=await response.text();
  if(result.length>100000)problem('pdv_platform_response_too_large',502);
  return new Response(result,{status:response.status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
