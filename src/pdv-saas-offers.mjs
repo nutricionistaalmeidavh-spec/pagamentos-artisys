@@ -1,5 +1,5 @@
 // Product-specific commercial templates for the existing Pagamentos ArtiSys catalog.
-// No Asaas credentials, price, connector secret, checkout or DB offer is created here.
+// Prices are explicit; Asaas credentials, connector secrets and checkouts are never created here.
 export const PDV_SAAS_PRODUCT_ID='pdv-total-saas';
 export const PDV_SAAS_OFFER_TEMPLATES=Object.freeze([
   {id:'pdv-total-saas-mensal',productId:PDV_SAAS_PRODUCT_ID,name:'PDV TOTAL — Mensal',
