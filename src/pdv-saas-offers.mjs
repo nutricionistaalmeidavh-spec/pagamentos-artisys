@@ -6,7 +6,7 @@ export const PDV_SAAS_OFFER_TEMPLATES=Object.freeze([
     description:'Assinatura mensal do PDV TOTAL para o estabelecimento cadastrado.',saleType:'monthly'},
   {id:'pdv-total-saas-anual',productId:PDV_SAAS_PRODUCT_ID,name:'PDV TOTAL — Anual',
     description:'Assinatura anual do PDV TOTAL para o estabelecimento cadastrado.',saleType:'yearly'}
-].map(x=>Object.freeze({...x,deliveryMode:'webhook',artifactName:null,priceCents:null,
+].map(x=>Object.freeze({...x,deliveryMode:'webhook',artifactName:null,priceCents:x.saleType==='monthly'?8900:89900,
   active:false,category:'sistemas',status:'published'})));
 
 export function pdvSaasTemplatesPending(offers){
