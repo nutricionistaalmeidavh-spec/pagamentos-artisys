@@ -2,6 +2,7 @@
 // Modelos administrativos sem preço. Não entram na tabela de ofertas,
 // catálogo público nem checkout até o operador informar um preço válido.
 import {CATALOG_DRAFTS} from './catalog-drafts.mjs';
+import {PDV_SAAS_OFFER_TEMPLATES,pdvSaasTemplatesPending} from './pdv-saas-offers.mjs';
 
 export const HUB_COURSE_TEMPLATES=Object.freeze([
  {id:'trilha-pentest-ethical-hacking',productId:'hubestudos-course-trilha-pentest-ethical-hacking',name:'Pentest e Ethical Hacking',lessons:30},
@@ -23,7 +24,7 @@ const DEVKIT_OFFER_IDS=new Set(CATALOG_DRAFTS.map(x=>x.id).filter(x=>!SYSTEM_OFF
 export function offerCategory(offer){
  const id=String(offer?.id||''),product=String(offer?.product_id||offer?.productId||'');
  if(product.startsWith('hubestudos-course-')||product==='hubestudos-subscription'||HUB_COURSE_TEMPLATES.some(x=>x.id===id))return 'cursos';
- if(SYSTEM_OFFER_IDS.has(id)||SYSTEM_OFFER_IDS.has(product))return 'sistemas';
+ if(SYSTEM_OFFER_IDS.has(id)||SYSTEM_OFFER_IDS.has(product)||product==='pdv-total-saas'||PDV_SAAS_OFFER_TEMPLATES.some(x=>x.id===id))return 'sistemas';
  if(DEVKIT_OFFER_IDS.has(id)||DEVKIT_OFFER_IDS.has(product))return 'devkits';
  return 'outros';
 }
@@ -32,4 +33,9 @@ export function courseTemplatesPending(offers){
  const registered=new Set(offers.map(x=>x.id));
  // Nunca altera ofertas reais existentes, inclusive legadas ou publicadas.
  return HUB_COURSE_TEMPLATES.filter(x=>!registered.has(x.id));
+}
+
+// Extends the existing admin offer templates without changing courses, DevKits or payments.
+export function commercialTemplatesPending(offers){
+ return [...courseTemplatesPending(offers),...pdvSaasTemplatesPending(offers)];
 }
