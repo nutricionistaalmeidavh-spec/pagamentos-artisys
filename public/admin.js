@@ -119,16 +119,22 @@ function bootstrapPdv(){
  openModal('Primeiro estabelecimento do PDV TOTAL','<p>Somente para instalações sem empresa ativa. O proprietário terá acesso individual ao PDV.</p>'+
   '<form id="pdv-bootstrap-form" class="form-stack">'+
   field('Estabelecimento','name','','text','required minlength="3" maxlength="100"')+
-  field('Identificador','slug','','text','required pattern="[a-z0-9][a-z0-9-]{2,63}"')+
   field('Nome do proprietário','ownerName','','text','required minlength="3" maxlength="100"')+
-  field('E-mail','email','','email','required')+
-  field('Senha inicial','password','','password','required minlength="12" autocomplete="new-password"')+
+  field('E-mail','email','','email','required maxlength="254" autocomplete="email"')+
+  field('Senha inicial','password','','password','required minlength="12" maxlength="256" autocomplete="new-password"')+
+  '<p class="small">Use o e-mail completo, como nome@gmail.com, e uma senha de pelo menos 12 caracteres.</p><p id="pdv-bootstrap-error" role="alert" hidden></p>'+
   '<div class="form-actions"><button type="button" class="secondary" data-close>Cancelar</button><button type="submit" class="primary">Criar empresa</button></div></form>');
  el('pdv-bootstrap-form').addEventListener('submit',e=>{e.preventDefault();
-  const form=e.currentTarget;if(!form.reportValidity())return;
+  const form=e.currentTarget,emailInput=form.elements.email;
+  const validEmail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim());
+  emailInput.setCustomValidity(validEmail?'':'Informe um e-mail completo, como nome@gmail.com.');
+  emailInput.addEventListener('input',()=>emailInput.setCustomValidity(''),{once:true});
+  if(!form.reportValidity())return;
   const data=Object.fromEntries(new FormData(form).entries());
   withBusy(form.querySelector('[type="submit"]'),async()=>{
-   await api('pdv/bootstrap','POST',data);form.reset();
+   const feedback=el('pdv-bootstrap-error');feedback.hidden=true;
+   try{await api('pdv/bootstrap','POST',data);}catch(error){feedback.textContent=translateError(error);feedback.hidden=false;return;}
+   form.reset();
    closeModal();toast('Primeiro estabelecimento criado.');await loadPdvTenants();
   });
  });
