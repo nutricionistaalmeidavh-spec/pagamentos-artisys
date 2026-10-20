@@ -76,6 +76,12 @@ async function loadPdvTenants(){
  const target=el('pdv-tenants-content'),audit=el('pdv-audit-content');
  target.innerHTML='<div class="loading">Consultando PDV TOTAL…</div>';
  try{
+  const status=await api('pdv/status');
+  if(!status.configured){
+   target.innerHTML=empty('PDV TOTAL não conectado','Cadastre URL e segredo de integração no Worker central. A administração financeira continua disponível.');
+   audit.innerHTML='';
+   return;
+  }
   const [list,events]=await Promise.all([api('pdv/tenants'),api('pdv/audit')]);
   pdvTenants=list.tenants||[];
   const pending=(list.pendingTenants||[]).length;
