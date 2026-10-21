@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<meta name="description" content="Calculadora comercial privada da ArtiSys para precificação de serviços e propostas.">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Precificador de projetos · ArtiSys</title>
+<link rel="stylesheet" href="/assets/precificador.css">
+<script type="module" src="/assets/precificador.js"></script>
+</head>
+<body>
+<header class="header">
+  <a class="brand" href="/admin"><span class="brand-icon">A<span>.</span></span><span><strong>ArtiSys</strong><small>Central comercial</small></span></a>
+  <div class="header-right"><span class="product-label"><span class="signal"></span> Precificador de projetos</span><a href="/admin" class="header-link">Central de pagamentos <span aria-hidden="true">↗</span></a><button id="logout" class="quiet" type="button" hidden>Sair</button></div>
+</header>
+<main>
+  <section id="signin" class="signin-card" aria-labelledby="signin-title">
+    <span class="kicker">ÁREA PRIVADA · ARTISYS</span>
+    <div class="lock-badge" aria-hidden="true">↗</div>
+    <h1 id="signin-title">Entre no seu espaço de propostas.</h1>
+    <p>Use o mesmo token administrativo da Central de Pagamentos. Os orçamentos ficam neste navegador, sem envio de dados de clientes para o servidor.</p>
+    <form id="login-form">
+      <label for="token">Token administrativo</label>
+      <input type="password" id="token" required autocomplete="off" placeholder="Seu token privado">
+      <button class="primary full" type="submit" id="login-action">Entrar no precificador <span aria-hidden="true">↗</span></button>
+    </form>
+    <p id="login-error" class="error-message" role="alert" hidden></p>
+    <small>A precificação não cria ofertas, cobranças nem pedidos.</small>
+  </section>
+  <div id="workspace" hidden>
+    <section class="hero">
+      <div><span class="kicker"><span class="signal"></span> ARTISYS BUSINESS INTELLIGENCE</span><h1>Propostas com mais<br><em>clareza e margem.</em></h1><p>Transforme o diagnóstico da reunião em escopo, investimento e proposta comercial — sem adivinhação.</p></div>
+      <div class="hero-actions"><button id="new-quote" class="outline-light" type="button">+ Novo orçamento</button><button id="save-quote" class="bright" type="button">Salvar orçamento <span aria-hidden="true">↗</span></button></div>
+      <div class="orb orb1" aria-hidden="true"></div><div class="orb orb2" aria-hidden="true"></div>
+    </section>
+    <div class="workspace-top">
+      <div class="tab-group" role="tablist" aria-label="Áreas do precificador"><button type="button" id="tab-editor" class="tab active" role="tab" aria-selected="true">Calculadora</button><button type="button" id="tab-saved" class="tab" role="tab" aria-selected="false">Orçamentos salvos <span id="saved-count" class="count">0</span></button></div>
+      <span class="privacy-note">● Dados de clientes apenas no navegador atual</span>
+    </div>
+    <div id="editor-view" class="columns">
+      <div class="form-area">
+        <section class="surface section-card">
+          <div class="section-head"><span class="step">01</span><div><h2>Identificação do projeto</h2><p>Informações que vão para a proposta comercial.</p></div></div>
+          <div class="form-grid">
+            <label class="field full"><span>Tipo de serviço</span><select id="preset"><option value="obras">BI de obras</option><option value="industria">BI industrial</option><option value="planilhas">BI de planilhas</option><option value="automacao">Automação de processos</option><option value="software">Sistema sob medida</option></select></label>
+            <label class="field"><span>Empresa / cliente</span><input id="client" type="text" maxlength="140" placeholder="Ex.: Opuz Engenharia"></label>
+            <label class="field"><span>Contato</span><input id="contact" type="text" maxlength="140" placeholder="Ex.: André Perin"></label>
+            <label class="field full"><span>Nome do projeto</span><input id="project" type="text" maxlength="140" placeholder="Ex.: Inteligência Gerencial de Obras"></label>
+          </div>
+        </section>
+        <section class="surface section-card">
+          <div class="section-head"><span class="step">02</span><div><h2>Escopo e esforço</h2><p>Estime as horas por etapa. Edite conforme o que foi descoberto na reunião.</p></div></div>
+          <div class="activity-head"><span>ENTREGAS / ETAPAS</span><span>HORAS ESTIMADAS</span></div>
+          <div id="activities" class="activities"></div>
+          <button type="button" class="link-action" id="add-activity">+ Adicionar etapa</button>
+          <div class="activity-total"><span>Total previsto de execução</span><strong><span id="total-hours">0</span> horas</strong></div>
+          <label class="field top-space"><span>Escopo descrito para o cliente</span><textarea id="scope" rows="3" maxlength="1000" placeholder="Ex.: Consolidação de planilhas de medições e custos; dashboards de evolução física e financeira por obra."></textarea></label>
+          <label class="field top-space"><span>Observações e exclusões</span><textarea id="notes" rows="2" maxlength="1000" placeholder="Ex.: Não inclui coleta de dados em campo ou integração com software sem API."></textarea></label>
+        </section>
+        <section class="surface section-card">
+          <div class="section-head"><span class="step">03</span><div><h2>Custos e condições</h2><p>A margem é calculada sobre a receita após tributos, não como acréscimo sobre o custo.</p></div></div>
+          <div class="form-grid">
+            <label class="field"><span>Custo interno / hora <span class="help" title="Inclua seu tempo e custos operacionais. Não é o preço de venda da hora.">ⓘ</span></span><div class="input-prefix"><span>R$</span><input id="hourlyCost" type="number" min="0" max="1000000" step="1"></div></label>
+            <label class="field"><span>Despesas adicionais</span><div class="input-prefix"><span>R$</span><input id="extraCosts" type="number" min="0" max="100000000" step="1"></div></label>
+            <label class="field"><span>Reserva de risco (%)</span><div class="input-suffix"><input id="riskPct" type="number" min="0" max="100" step="1"><span>%</span></div></label>
+            <label class="field"><span>Tributos estimados (%)</span><div class="input-suffix"><input id="taxesPct" type="number" min="0" max="99" step=".5"><span>%</span></div></label>
+            <label class="field"><span>Margem líquida-alvo (%)</span><div class="input-suffix"><input id="marginPct" type="number" min="0" max="99" step="1"><span>%</span></div></label>
+            <label class="field"><span>Desconto comercial (%)</span><div class="input-suffix"><input id="discountPct" type="number" min="0" max="100" step="1"><span>%</span></div></label>
+            <label class="field"><span>Suporte mensal opcional</span><div class="input-prefix"><span>R$</span><input id="monthlySupport" type="number" min="0" max="1000000" step="10"></div></label>
+            <label class="field"><span>Prazo de entrega (dias úteis)</span><input id="deliveryDays" type="number" min="1" max="365" step="1"></label>
+          </div>
+        </section>
+        <section class="surface section-card">
+          <div class="section-head"><span class="step">04</span><div><h2>Diagnóstico comercial</h2><p>Registre a complexidade percebida e confira se há risco não precificado.</p></div></div>
+          <div class="form-grid">
+            <label class="field"><span>Fontes de dados</span><select id="diag-sources"><option value="1">1–2 fontes organizadas</option><option value="2">Várias planilhas ou ERP</option><option value="3">Múltiplos sistemas</option></select></label>
+            <label class="field"><span>Qualidade dos dados</span><select id="diag-quality"><option value="1">Padronizados e íntegros</option><option value="2">Precisam de ajustes</option><option value="3">Inconsistentes / incompletos</option></select></label>
+            <label class="field"><span>Atualização</span><select id="diag-update"><option value="1">Manual ou semanal</option><option value="2">Automática diária</option><option value="3">Frequente / contínua</option></select></label>
+            <label class="field"><span>Usuários e permissões</span><select id="diag-users"><option value="1">Acesso interno simples</option><option value="2">Perfis diferentes</option><option value="3">Controle por obra/cliente</option></select></label>
+          </div>
+          <div class="diagnostic"><div><span class="tiny">NÍVEL OBSERVADO</span><strong id="diag-label">Simples</strong><p id="diag-description">Baixo risco operacional estimado. Confirme com amostra real dos dados.</p></div><button type="button" class="small-button" id="apply-risk">Aplicar reserva sugerida</button></div>
+        </section>
+        <section class="surface section-card">
+          <div class="section-head"><span class="step">05</span><div><h2>Retorno percebido pelo cliente</h2><p>Opcional: ajuda a defender o valor da solução na negociação.</p></div></div>
+          <div class="form-grid">
+            <label class="field"><span>Horas economizadas pelo cliente / mês</span><input id="hoursSavedPerMonth" type="number" min="0" max="1000000" step="1"></label>
+            <label class="field"><span>Valor estimado da hora do cliente</span><div class="input-prefix"><span>R$</span><input id="clientHourValue" type="number" min="0" max="1000000" step="1"></div></label>
+          </div>
+          <p class="footnote">Projeção ilustrativa de economia de tempo; não é receita garantida nem substitui análise de retorno financeiro.</p>
+        </section>
+      </div>
+      <aside class="estimate-area" aria-label="Resultado do orçamento">
+        <div class="quote-summary">
+          <div class="summary-top"><span class="summary-eyebrow">ESTIMATIVA EM TEMPO REAL</span><span class="live"><span class="signal"></span> Ao vivo</span></div>
+          <p class="summary-client" id="summary-client">Projeto sob medida</p>
+          <div class="price-label">Preço sugerido de implantação</div>
+          <div class="main-price" id="final-price">R$ 0,00</div>
+          <p class="price-caption">Valor comercial estimado após desconto</p>
+          <div class="breakdown">
+            <div><span>Custo de execução</span><strong id="direct-cost">—</strong></div>
+            <div><span>Reserva de risco</span><strong id="reserve">—</strong></div>
+            <div><span>Ponto de equilíbrio</span><strong id="break-even">—</strong></div>
+            <div><span>Preço antes de desconto</span><strong id="suggested-price">—</strong></div>
+            <div><span>Tributos previstos</span><strong id="taxes">—</strong></div>
+            <div class="profit-row"><span>Lucro estimado</span><strong id="profit">—</strong></div>
+          </div>
+          <div class="margin-stat"><div><span>Margem efetiva</span><strong id="effective-margin">—</strong></div><div class="margin-track"><div id="margin-fill"></div></div><small id="target-margin">Meta: 35%</small></div>
+          <div class="alerts" id="alerts" role="status" aria-live="polite"></div>
+          <div class="extras" id="extras"></div>
+          <button type="button" id="copy-proposal" class="bright full">Copiar proposta comercial <span aria-hidden="true">↗</span></button>
+          <div class="secondary-actions"><button type="button" id="print-proposal">Imprimir / PDF</button><button type="button" id="export-json">Exportar JSON</button></div>
+          <span class="bottom-note">Estimativa não vinculante. Confirme o escopo e os dados antes de fechar.</span>
+        </div>
+        <div class="side-note"><strong>Como apresentar o valor</strong><p>Mostre o investimento e as entregas ao cliente. Custo/hora, lucro e margem são informações internas e não aparecem na proposta copiada.</p></div>
+      </aside>
+    </div>
+    <section id="saved-view" class="saved-panel surface" hidden><div class="section-head"><span class="step">↗</span><div><h2>Orçamentos deste navegador</h2><p>Salvos somente neste dispositivo. Exporte um JSON para ter uma cópia independente.</p></div></div><div id="saved-list"></div></section>
+    <div id="notice" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+</main>
+<footer class="footer"><span>ArtiSys © 2026 · Ferramenta comercial interna</span><span>Open source · sem integrações pagas obrigatórias · sem cobrança automática</span></footer>
+</body>
+</html>
