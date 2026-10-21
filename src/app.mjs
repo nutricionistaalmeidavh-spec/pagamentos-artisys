@@ -223,6 +223,10 @@ export function createApp(options={}) {
       if(method==='GET' && path==='/')return serve(res,'checkout.html','text/html; charset=utf-8');
       if(method==='GET' && (path==='/comprar'||path==='/pedido'))return serve(res,'checkout.html','text/html; charset=utf-8');
       if(method==='GET' && path==='/admin')return serve(res,'admin.html','text/html; charset=utf-8');
+      if(method==='GET' && (path==='/precificar'||path==='/precificador'))return serve(res,'precificador.html','text/html; charset=utf-8');
+      if(method==='GET' && path==='/assets/precificador.css')return serve(res,'precificador.css','text/css; charset=utf-8');
+      if(method==='GET' && path==='/assets/precificador.js')return serve(res,'precificador.js','application/javascript; charset=utf-8');
+      if(method==='GET' && path==='/assets/precificador-engine.js')return serve(res,'precificador-engine.js','application/javascript; charset=utf-8');
       if(method==='GET' && path==='/assets/style.css')return serve(res,'style.css','text/css; charset=utf-8');
       if(method==='GET' && path==='/assets/admin.js')return serve(res,'admin.js','application/javascript; charset=utf-8');
       if(method==='GET' && path==='/assets/checkout.js')return serve(res,'checkout.js','application/javascript; charset=utf-8');
