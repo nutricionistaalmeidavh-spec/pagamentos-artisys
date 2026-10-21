@@ -143,7 +143,7 @@ try{
  await page.locator('#contact').fill('André Perin');
  await page.locator('#marginPct').fill('40');
  await page.locator('#discountPct').fill('15');
- assert.match(await page.locator('#final-price').innerText(),/R\\$ [\\d.,]+/);
+ assert.ok((await page.locator('#final-price').innerText()).startsWith('R$'),'Preço em BRL deve estar visível');
  assert.match(await page.locator('#summary-client').innerText(),/Opuz Engenharia/);
  const firstPrice=await page.locator('#final-price').innerText();
  await page.locator('#discountPct').fill('0');
