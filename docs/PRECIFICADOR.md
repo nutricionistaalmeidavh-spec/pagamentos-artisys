@@ -1,58 +1,66 @@
-# Precificador comercial da ArtiSys
+# Precificador comercial da ArtiSys — Workers oficial
 
-Ferramenta interna para diagnósticos durante reuniões de BI, automações e sistemas sob medida.
+Ferramenta interna para precificar serviços durante reuniões de BI, automação e sistemas.
 
-## Acesso e publicação
+## Endereços reais
 
-- Na Central de Pagamentos: `/precificar` (rota adicionada tanto ao Worker quanto ao servidor Node).
-- Subdomínio planejado: `https://precificar.pagamentos.artisys.dev/` (ainda **não** vinculado; não anunciar como disponível antes de verificar DNS e acesso).
-- **Cloudflare:** após o merge na branch principal e o deploy concluído, abra Workers & Pages → `pagamentos-artisys-central` → Settings → Domains & Routes → Add Custom Domain → `precificar.pagamentos.artisys.dev`. Só fazer isso caso a zona DNS `artisys.dev` esteja sob a mesma conta e haja controle do domínio. A configuração não deve retirar ou mudar `pagamentos.artisys.dev`.
-- O Worker detecta apenas o hostname exato `precificar.pagamentos.artisys.dev`: a raiz deste host abre o precificador. A raiz de outros hosts permanece o checkout.
-- **Self-hosted:** `npm start`, definir `ADMIN_TOKEN` forte de 32+ caracteres e colocar um proxy reverso HTTPS na frente do Node, apontando o subdomínio para o servidor. Não exige Cloudflare; usa SQLite local existente e arquivos HTML/JS/CSS incluídos.
-- O precificador usa o endpoint `/v1/admin/summary` exclusivamente para autenticar a sessão; o mesmo token do painel de pagamentos fica em `sessionStorage`, nunca em URL ou na proposta.
+**Central de Pagamentos já configurada no repositório:**
 
-## Fluxo na reunião
+`https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev`
 
-1. Selecionar o tipo de serviço: BI obras, BI industrial, BI planilhas, automação ou sistema.
-2. Registrar cliente, contato e escopo, horas estimadas de cada etapa e prazo.
-3. Informar **custo interno** da hora, despesas, contingência, alíquota estimada e margem-alvo.
-4. Opcionalmente avaliar fontes, qualidade de dados, atualização e permissões; clicar em **Aplicar reserva sugerida** se fizer sentido. O diagnóstico não muda os preços sozinho.
-5. Checar preço sugerido, equilíbrio financeiro, impostos previstos, lucro e margem efetiva; ajustar o desconto se necessário.
-6. Copiar proposta sem divulgar custos internos; salvar ou exportar a estimativa e apresentar investimento na reunião.
+O nome está em `wrangler.jsonc` e no README. O estado do site ao vivo deve ser confirmado após publicação.
 
-## Fórmula
+**Nova rota no mesmo Worker (após merge e deploy):**
 
-- Custo direto = horas previstas × custo interno/h + despesas externas.
+`https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/precificar`
+
+**Worker independente de precificação (ainda não publicado):**
+
+`https://precificador-artisys-central.nutricionistaalmeidavh.workers.dev`
+
+Este novo nome não é um subdomínio de `pagamentos-artisys-central`: ambos são serviços irmãos na conta `nutricionistaalmeidavh.workers.dev`. Não são necessários domínios `artisys.dev`, DNS próprio, serviço pago ou mudança nos domínios da Central.
+
+## Publicação
+
+1. Revise o PR com testes e faça merge na `main`. Se o Worker central já estiver vinculado a Builds, o deploy automático da `main` atualiza **somente** o `pagamentos-artisys-central`, liberando `/precificar` na origem atual.
+2. Para ter endereço próprio, crie no Cloudflare Workers & Pages uma **segunda aplicação Worker** a partir do **mesmo repo GitHub**, com nome `precificador-artisys-central` e configuração `wrangler.precificador.jsonc`. A alternativa via CLI autenticada é `npx wrangler deploy --config wrangler.precificador.jsonc`.
+3. Esta configuração usa o binding `PRECIFICADOR_ASSETS` e o **Service Binding** `PAGAMENTOS_CENTRAL` para o Worker `pagamentos-artisys-central`. Verifique no Dashboard a existência e vínculo. O novo Worker não tem D1, R2, Asaas, cron ou secrets de cobrança.
+4. Confirme o acesso ao painel e faça login com o token administrativo existente. Login é validado pela Central via Service Binding; o Worker secundário não retorna os dados financeiros do endpoint.
+5. Não publique o endereço do Worker secundário como ativo até concluir o deploy e conferir o login.
+6. Se não desejar segundo Worker, use apenas `/precificar` na origem atual. É a versão com menor manutenção e sem recurso adicional.
+
+**Alternativa self-hosted (R$ 0 em licenças):** executar `npm start` em Node.js com SQLite local e `ADMIN_TOKEN` de 32+ caracteres; servir `/precificar` pelo mesmo servidor e, se for necessário HTTPS público, configurar reverse proxy próprio. Sem serviço externo de IA nem fontes de terceiros.
+
+## Fluxo comercial
+
+1. Escolha um preset: BI obras, BI industrial, BI planilhas, automação ou software.
+2. Registre cliente, contato, escopo, horas estimadas de cada etapa e prazo em dias úteis.
+3. Informe **custo interno da hora**, despesas, percentual de contingência, alíquota estimada de tributos e margem de lucro desejada.
+4. Registre qualidade de dados, fontes, frequência de atualização e perfis de acesso. **Aplicar reserva sugerida** é opcional: o diagnóstico não altera automaticamente seu orçamento.
+5. Confira custo, ponto de equilíbrio, lucro, margem real, preço após desconto, investimento e retorno ilustrativo do cliente.
+6. Copie a proposta para o cliente sem informar custos internos ou exporte a estimativa JSON para arquivo privado.
+
+## Fórmula comercial
+
+- Custo direto = soma(horas por etapa) × custo interno/hora + despesas adicionais.
 - Reserva de risco = custo direto × risco %.
 - Custo total = custo direto + reserva.
-- Preço alvo = custo total / [1 - (tributos % + margem alvo %) / 100].
-- Arredondamento comercial: para cima, em múltiplos de R$ 50.
-- Preço final = preço arredondado × (1 - desconto %).
-- Ponto de equilíbrio = custo total / (1 - tributos %).
+- Preço-alvo = custo total / [1 - (tributos% + margem desejada%) / 100].
+- Arredondar preço para cima em múltiplos de R$ 50, em seguida aplicar eventual desconto.
+- Ponto de equilíbrio = custo total / (1 - tributos% / 100).
 - Lucro estimado = preço final - tributos estimados - custo total.
 - Margem efetiva = lucro estimado / preço final.
 
-**Atenção:** margem não é markup. O campo de tributos é apenas uma estimativa e requer orientação contábil. Custos recorrentes/infraestrutura, se houver, devem ser negociados separadamente. O suporte mensal não entra na conta da implantação e não é ativado automaticamente.
+**Limites:** Os percentuais são premissas do prestador, não regras tributárias. Valide a alíquota com o contador; informe custos de equipe e impostos corretamente. Retorno por economia de horas não é garantia de ROI. Proposta é estimativa não vinculante, sujeita à validação de dados e escopo.
 
-## Privacidade e segurança
+## Privacidade
 
-- UI estática pública, mas o **uso requer token administrativo** validado na API existente.
-- Orçamentos e nomes de clientes são gravados **somente no armazenamento local do navegador (localStorage)**. Não há nova tabela D1, API, pagamento, pedido, oferta, webhook ou transmissão de orçamento.
-- O armazenamento local **não é criptografado**, não sincroniza dispositivos nem subdomínios. Use apenas dispositivo confiável; para migrar, exporte uma cópia e apague-a do equipamento quando não for mais necessária.
-- A exportação JSON inclui custos e margem internos: é apenas para controle interno. A proposta copiada/versão para imprimir exclui esses detalhes.
-- Não inclua dados pessoais desnecessários, contratos privados ou segredos nas observações.
-- Nunca passe `ADMIN_TOKEN` por link, query string ou compartilhamento de tela.
-- Em execução pública, evite armazenar token em sessões compartilhadas e proteja o acesso ao dispositivo.
-
-## Custo e dependências
-
-A implementação usa JavaScript nativo, Node.js e os componentes já presentes no repositório, sem SDK pago, API de IA, fontes externas nem licença. A execução local é open source e self-hosted; a opção Cloudflare segue a infraestrutura existente da Central de Pagamentos, sujeita aos limites do plano contratado.
+- O front-end é estático, mas entrar no painel requer token `ADMIN_TOKEN` existente, validado por `/v1/admin/summary`. Em host secundário a validação é delegada por binding.
+- Orçamentos, nomes e informações do cliente ficam **somente no localStorage do navegador** (sem criptografia, sincronização ou persistência em D1). Não devem ser usados em dispositivo compartilhado.
+- Uma sessão autorizada está em `sessionStorage` por origem. No Worker secundário é necessário autenticar novamente, pois as origens são diferentes.
+- `Exportar JSON` inclui custos internos: use apenas como backup privado. `Copiar proposta` e `Imprimir/PDF` excluem a margem interna e o custo/hora.
+- Nenhum formulário do precificador cria oferta, pedido, checkout, cobrança ou webhook.
 
 ## Testes
 
-```bash
-npm run check
-npm run test:worker
-```
-
-Os testes cobrem cálculo de margem, desconto, risco, ponto de equilíbrio, payback, proposta textual, rota Worker e execução Node. Nenhum teste cria cobrança real.
+`npm run check` executa testes unitários de fórmulas e rotas Node/Worker, inclusive isolamento do Worker secundário. `npm run test:worker` valida o Worker da Central em ambiente local.
