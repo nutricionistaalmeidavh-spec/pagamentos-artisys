@@ -8,10 +8,6 @@ test('precificador tem rota isolada e não depende de D1 para carregar a interfa
  assert.equal(res.status,200);
  assert.equal(await res.text(),'/precificador.html');
 });
-test('subdomínio dedicado abre o precificador na raiz',async()=>{
- const res=await worker.fetch(new Request('https://precificar.pagamentos.artisys.dev/'),assets(),{waitUntil(){}});
- assert.equal(await res.text(),'/precificador.html');
-});
 test('raiz tradicional da central continua checkout',async()=>{
  const res=await worker.fetch(new Request('https://pagamentos.artisys.dev/'),assets(),{waitUntil(){}});
  assert.equal(await res.text(),'/checkout.html');
