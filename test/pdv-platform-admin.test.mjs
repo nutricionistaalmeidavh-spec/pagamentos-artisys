@@ -43,3 +43,22 @@ test('public browser sees a single central admin section, not platform tokens or
  assert.ok(js.includes("api('pdv/approve'"));
  assert.doesNotMatch(js,/PLATFORM_ADMIN_TOKEN|ARTISYS_PLATFORM_BRIDGE_SECRET/);
 });
+
+test('owner license administration forwards only bounded actions',async()=>{
+ const actions=[];
+ const stub=async(_url,options)=>{actions.push(JSON.parse(options.body));return new Response(JSON.stringify({granted:true,emailSent:true}),{status:201});};
+ const args={fetchImpl:stub,now:()=>1730000000000,nonce:()=> '87654321-aaaa-4bbb-8ccc-123456789012'};
+ const granted=await forwardPdvPlatformAdmin(env,{action:'owner-license',data:{email:'buyer@example.test',days:30,reason:'Liberação por compra confirmada'}},args);
+ assert.equal(granted.status,201);
+ assert.equal(actions[0].data.email,'buyer@example.test');
+ const revoked=await forwardPdvPlatformAdmin(env,{action:'revoke-license',tenantId:'t_approved'},args);
+ assert.equal(revoked.status,201);
+ assert.equal(actions[1].tenantId,'t_approved');
+ await assert.rejects(forwardPdvPlatformAdmin(env,{action:'owner-license',data:{email:'buyer@example.test',days:0,reason:'Liberação por compra confirmada'}},args),/invalid/);
+});
+test('mobile admin exposes owner email license actions',()=>{
+ const html=readFileSync(new URL('../public/admin.html',import.meta.url),'utf8');
+ const js=readFileSync(new URL('../public/admin.js',import.meta.url),'utf8');
+ assert.match(html,/id="pdv-owner-license-new"/);
+ for(const action of ['pdv/owner-license','pdv/revoke-license','data-pdv-owner-license','data-pdv-license-revoke'])assert.ok(js.includes(action));
+});
