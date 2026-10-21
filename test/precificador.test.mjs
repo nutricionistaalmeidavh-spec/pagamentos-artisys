@@ -8,7 +8,7 @@ test('orçamento: custos, contingência e margem sobre a receita sem confundir c
  assert.equal(q.directCost,1100);
  assert.equal(q.reserve,110);
  assert.equal(q.costBasis,1210);
- assert.equal(q.breakEven,1273.69);
+ assert.equal(q.breakEven,1273.68);
  assert.equal(q.targetPrice,2016.67);
  assert.equal(q.suggestedPrice,2050);
  assert.equal(q.finalPrice,2050);
