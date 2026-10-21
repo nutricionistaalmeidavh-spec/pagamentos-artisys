@@ -1,0 +1,35 @@
+name: Validate PDV owner licenses
+
+on:
+  pull_request:
+    paths:
+      - 'src/pdv-platform-admin.mjs'
+      - 'src/cloudflare-worker.mjs'
+      - 'public/admin.js'
+      - 'public/admin.html'
+      - 'test/pdv-platform-admin.test.mjs'
+      - '.github/workflows/verify-pdv-owner-license.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/pdv-platform-admin.mjs'
+      - 'src/cloudflare-worker.mjs'
+      - 'public/admin.js'
+      - 'public/admin.html'
+      - 'test/pdv-platform-admin.test.mjs'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check syntax
+        run: |
+          node --check src/pdv-platform-admin.mjs
+          node --check src/cloudflare-worker.mjs
+          node --check public/admin.js
+      - name: Validate owner license and financial isolation
+        run: node --test test/pdv-platform-admin.test.mjs

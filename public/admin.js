@@ -89,8 +89,13 @@ async function loadPdvTenants(){
    '<p class="small">'+esc(t.ownerEmail||'Sem titular')+'</p>'+
    '<div class="data-list"><div><dt>Assinatura no PDV</dt><dd>'+esc(t.subscriptionStatus||'Não definida')+'</dd></div>'+
    '<div><dt>Plano</dt><dd>'+esc(t.planKey||'—')+'</dd></div>'+
-   '<div><dt>Vencimento</dt><dd>'+esc(t.endsAt?date(t.endsAt):'—')+'</dd></div></div>'+
-   (!t.active?'<div class="card-bottom"><button type="button" class="primary" data-pdv-approve="'+esc(t.id)+'">Aprovar cadastro</button></div>':'')+'</div>').join('');
+   '<div><dt>Vencimento do plano</dt><dd>'+esc(t.endsAt?date(t.endsAt):'—')+'</dd></div>'+
+   '<div><dt>Licença manual</dt><dd>'+esc(t.manualLicenseActive?(new Date(t.manualLicenseEndsAt).getTime()>Date.now()?'Liberada até '+date(t.manualLicenseEndsAt):'Expirada'):'Não liberada')+'</dd></div></div>'+
+   '<div class="card-bottom" style="flex-wrap:wrap;gap:8px">'+
+   (!t.active?'<button type="button" class="secondary" data-pdv-approve="'+esc(t.id)+'">Aprovar cadastro</button>':'')+
+   '<button type="button" class="primary" data-pdv-owner-license="'+esc(t.id)+'">Liberar / renovar</button>'+
+   (t.manualLicenseActive?'<button type="button" class="secondary" data-pdv-license-revoke="'+esc(t.id)+'">Revogar licença manual</button>':'')+
+   '</div></div>').join('');
   target.innerHTML='<div class="notice"><span>'+icon('shield')+'</span><div><strong>Administração unificada</strong><p>'+pdvTenants.length+' empresa(s), '+pending+' pendente(s). O pagamento segue na central financeira.</p></div></div>'+
    (cards||empty('Nenhuma empresa cadastrada','Crie a primeira empresa para iniciar a operação.'))+
    (!pdvTenants.length?'<button type="button" class="secondary" id="pdv-bootstrap">Criar primeira empresa</button>':'');
@@ -114,6 +119,48 @@ function approvePdvTenant(id){
   closeModal();toast('Cadastro aprovado no PDV TOTAL.');await loadPdvTenants();
  }));
 }
+function ownerLicenseModal(tenantId=''){
+ const company=pdvTenants.find(t=>t.id===tenantId);
+ openModal('Liberar licença do proprietário',
+  '<p>Licença vinculada ao e-mail do comprador. Ele recebe um link individual para definir sua senha, válido por 48 horas.</p>'+
+  '<form id="pdv-owner-license-form" class="form-stack">'+
+  field('E-mail do proprietário','email',company?.ownerEmail||'','email','required maxlength="254" autocomplete="email"')+
+  field('Nome do estabelecimento (opcional para conta nova)','businessName','','text','maxlength="100" placeholder="Ex.: Lanchonete Central"')+
+  field('Validade em dias, contados a partir de hoje','days','30','number','required min="1" max="3650" step="1" inputmode="numeric"')+
+  field('Motivo da liberação','reason','Liberação manual autorizada pela ArtiSys','text','required minlength="8" maxlength="240"')+
+  '<div class="warning-note">A licença manual não registra pagamento nem altera a assinatura no Asaas. A liberação será auditada no PDV Total.</div>'+
+  '<div class="form-actions"><button class="secondary" type="button" data-close>Cancelar</button><button type="submit" class="primary">Liberar e enviar e-mail</button></div>'+
+  '</form>');
+ const form=el('pdv-owner-license-form');
+ if(company)form.elements.email.readOnly=true;
+ form.addEventListener('submit',event=>{
+  event.preventDefault();if(!form.reportValidity())return;
+  const raw=Object.fromEntries(new FormData(form).entries());
+  const data={email:raw.email.trim().toLowerCase(),days:Number(raw.days),reason:raw.reason.trim()};
+  if(raw.businessName.trim())data.businessName=raw.businessName.trim();
+  if(company)data.tenantId=tenantId;
+  withBusy(form.querySelector('[type="submit"]'),async()=>{
+   const answer=await api('pdv/owner-license','POST',data);
+   if(!answer.granted||!answer.emailSent)throw Error('Licença ou e-mail não confirmado pelo servidor.');
+   closeModal();
+   toast('Licença liberada. Link para criar senha enviado ao e-mail do proprietário.');
+   await loadPdvTenants();
+  });
+ });
+}
+function revokeOwnerLicense(tenantId){
+ const tenant=pdvTenants.find(t=>t.id===tenantId&&t.manualLicenseActive);if(!tenant)return;
+ openModal('Revogar licença manual',
+  '<h3>'+esc(tenant.name)+'</h3><p>Proprietário: '+esc(tenant.ownerEmail)+'</p>'+
+  '<div class="warning-note">A licença manual será revogada imediatamente. Se houver assinatura paga válida, ela continuará independente.</div>'+
+  '<div class="form-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="button" id="confirm-pdv-revoke">Confirmar revogação</button></div>');
+ el('confirm-pdv-revoke').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
+  const result=await api('pdv/revoke-license','POST',{tenantId});
+  if(!result.revoked)throw Error('Revogação não confirmada');
+  closeModal();toast('Licença manual revogada.');await loadPdvTenants();
+ }));
+}
+
 function bootstrapPdv(){
  if(pdvTenants.length)return;
  openModal('Primeiro estabelecimento do PDV TOTAL','<p>Somente para instalações sem empresa ativa. O proprietário terá acesso individual ao PDV.</p>'+
@@ -580,6 +627,9 @@ document.addEventListener('click',e=>{
  if(button.dataset.unpublish!==undefined){changePublication(button.dataset.unpublish,false);return;}
  if(button.id==='diagnose-asaas'){checkAsaas(button);return;}
  if(button.id==='pdv-refresh'){loadPdvTenants();return;}
+ if(button.id==='pdv-owner-license-new'){ownerLicenseModal();return;}
+ if(button.dataset.pdvOwnerLicense){ownerLicenseModal(button.dataset.pdvOwnerLicense);return;}
+ if(button.dataset.pdvLicenseRevoke){revokeOwnerLicense(button.dataset.pdvLicenseRevoke);return;}
  if(button.dataset.pdvApprove){approvePdvTenant(button.dataset.pdvApprove);return;}
  if(button.id==='pdv-bootstrap'){bootstrapPdv();return;}
  if(button.dataset.releaseUpload){const item=availableReleases.find(x=>x.id===button.dataset.releaseUpload);if(item){selectedRelease=item;el('release-file-input').value='';el('release-file-input').click();}return;}
