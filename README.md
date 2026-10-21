@@ -15,6 +15,12 @@ Central financeira independente para venda dos sistemas ArtiSys. **Hospedagem ca
 
 O Worker cria D1 apenas com CREATE TABLE/INDEX IF NOT EXISTS; checkout Asaas permanece **desativado** enquanto PAYMENTS_ENABLED não for true. Sem D1 responde 503 em vez de simular disponibilidade. O cron pertence somente ao Worker **pagamento-artisys-central**, com agendamento a cada cinco minutos; não cria um cron global com nome compartilhado.
 
+## Precificador de projetos
+
+O painel comercial fica em **`/precificar`**, com entrada pelo cabeçalho do `/admin`. Cálculo de esforço, custo, reserva, tributos, margem, desconto e proposta; orçamento salvo apenas no navegador e exportável em JSON. A UI solicita o mesmo token administrativo, sem alterar o fluxo financeiro.
+
+`https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/precificar` é a rota dentro do Worker atual após publicação. O Worker independente opcional terá nome `precificador-artisys-central.nutricionistaalmeidavh.workers.dev` e precisará ser implantado separadamente com `wrangler.precificador.jsonc`, sem DNS próprio. O modo Node/SQLite self-hosted também suporta a rota. Documentação de segurança, implantação e fórmulas: [Precificador comercial](docs/PRECIFICADOR.md).
+
 ## Rotas
 
 - /admin — painel administrativo.
