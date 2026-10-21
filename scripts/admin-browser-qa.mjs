@@ -136,6 +136,27 @@ try{
  assert.deepEqual([statusAfterCron.present,statusAfterCron.missing],[67,0]);
 
 
+ // Fluxo comercial: UI de precificação no mesmo Worker, sem gerar cobranças.
+ await page.goto(base+'/precificar',{waitUntil:'networkidle'});
+ await page.locator('#workspace').waitFor({state:'visible'});
+ await page.locator('#client').fill('Opuz Engenharia');
+ await page.locator('#contact').fill('André Perin');
+ await page.locator('#marginPct').fill('40');
+ await page.locator('#discountPct').fill('15');
+ assert.match(await page.locator('#final-price').innerText(),/R\\$ [\\d.,]+/);
+ assert.match(await page.locator('#summary-client').innerText(),/Opuz Engenharia/);
+ const firstPrice=await page.locator('#final-price').innerText();
+ await page.locator('#discountPct').fill('0');
+ assert.notEqual(await page.locator('#final-price').innerText(),firstPrice,'Desconto precisa impactar valor ao vivo');
+ await page.locator('#save-quote').click();
+ await page.locator('#tab-saved').click();
+ await page.getByRole('heading',{name:/Opuz Engenharia/}).waitFor();
+ await page.locator('#saved-list .saved-record button').first().click();
+ assert.equal(await page.locator('#client').inputValue(),'Opuz Engenharia');
+ await page.screenshot({path:'qa-shots/06-precificador-desktop.png',fullPage:true});
+ await page.setViewportSize({width:375,height:812});
+ await page.screenshot({path:'qa-shots/07-precificador-mobile.png',fullPage:true});
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),'Precificador com rolagem horizontal no celular');
  assert.deepEqual(issues,[],'Console/HTTP falhou');
  console.log('Playwright admin mobile + desktop: login, pedidos, rascunho D1, bloqueio de publicação, navegação OK.');
 }finally{
