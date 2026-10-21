@@ -442,6 +442,14 @@ async function process(request,env,ctx){
     const data=isObj(await read(request));
     return forwardPdvPlatformAdmin(env,{action:'bootstrap',data});
    }
+   if(method==='POST'&&suffix==='owner-license'){
+    const data=isObj(await read(request));
+    return forwardPdvPlatformAdmin(env,{action:'owner-license',data});
+   }
+   if(method==='POST'&&suffix==='revoke-license'){
+    const data=isObj(await read(request));
+    return forwardPdvPlatformAdmin(env,{action:'revoke-license',tenantId:data.tenantId});
+   }
    return send({error:'pdv_platform_action_denied'},403);
   }
   if(method==='GET'&&path==='/v1/admin/asaas/diagnostic')return send(await diagnoseAsaas(env,fetch));
