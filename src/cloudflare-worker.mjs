@@ -285,7 +285,7 @@ function cors(req,env){
  return origin&&allowed.includes(origin)?{'access-control-allow-origin':origin,'vary':'Origin','access-control-allow-headers':'authorization,content-type,idempotency-key','access-control-allow-methods':'GET,POST,OPTIONS'}:{};
 }
 async function process(request,env,ctx){
- const urlInfo=new URL(request.url),path=urlInfo.pathname==='/'&&urlInfo.hostname==='precificar.pagamentos.artisys.dev'?'/precificar':urlInfo.pathname,method=request.method,d=env.PAGAMENTO_ARTISYS_DB,headers=cors(request,env);
+ const path=new URL(request.url).pathname,method=request.method,d=env.PAGAMENTO_ARTISYS_DB,headers=cors(request,env);
  const allowedOrigin=!request.headers.get('origin')||request.headers.get('origin')===new URL(request.url).origin||Object.keys(headers).length>0;
  const send=(data,status=200)=>json(data,status,headers);
  if(method==='OPTIONS')return new Response(null,{status:allowedOrigin?204:403,headers});
