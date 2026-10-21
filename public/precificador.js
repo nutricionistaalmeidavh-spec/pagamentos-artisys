@@ -204,8 +204,6 @@ async function authorize(token){
  $('signin').hidden=true;$('workspace').hidden=false;$('logout').hidden=false;
 }
 async function boot(){
- const isDedicated=location.hostname==='precificador-artisys-central.nutricionistaalmeidavh.workers.dev';
- for(const a of document.querySelectorAll('[data-central-link]'))a.href=isDedicated?'https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/admin':'/admin';
  loadSaved();bindUI();renderDiagnosis();refreshForm();
  $('login-form').addEventListener('submit',async event=>{
   event.preventDefault();const token=$('token').value.trim();if(!token)return;
