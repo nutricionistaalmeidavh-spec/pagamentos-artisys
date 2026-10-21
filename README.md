@@ -17,9 +17,9 @@ O Worker cria D1 apenas com CREATE TABLE/INDEX IF NOT EXISTS; checkout Asaas per
 
 ## Precificador de projetos
 
-O painel comercial fica em **`/precificar`**, com entrada pelo cabeçalho do `/admin`. Cálculo de esforço, custo, reserva, tributos, margem, desconto e proposta; orçamento salvo apenas no navegador e exportável em JSON. A UI solicita o mesmo token administrativo, sem alterar o fluxo financeiro.
+O painel comercial fica em **`/precificar`**, com acesso pelo cabeçalho do `/admin`. Cálculo de esforço, custos, reserva, tributos, margem, desconto e geração de proposta; os orçamentos ficam salvos somente no navegador e podem ser exportados em JSON. Usa o token administrativo da Central, sem alterar cobranças.
 
-`https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/precificar` é a rota dentro do Worker atual após publicação. O Worker independente opcional terá nome `precificador-artisys-central.nutricionistaalmeidavh.workers.dev` e precisará ser implantado separadamente com `wrangler.precificador.jsonc`, sem DNS próprio. O modo Node/SQLite self-hosted também suporta a rota. Documentação de segurança, implantação e fórmulas: [Precificador comercial](docs/PRECIFICADOR.md).
+**Único Worker:** `pagamentos-artisys-central` (configuração `wrangler.jsonc`). **Único link do precificador:** https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/precificar. Deploy automático pela branch `main` já associada ao Worker. Nenhum subdomínio, Worker, DNS ou serviço adicional. O modo Node/SQLite self-hosted também suporta `/precificar`. Detalhes: [Precificador comercial](docs/PRECIFICADOR.md).
 
 ## Rotas
 

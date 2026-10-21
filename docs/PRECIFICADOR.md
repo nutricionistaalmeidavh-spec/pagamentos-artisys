@@ -1,66 +1,52 @@
-# Precificador comercial da ArtiSys — Workers oficial
+# Precificador comercial da ArtiSys
 
-Ferramenta interna para precificar serviços durante reuniões de BI, automação e sistemas.
+Ferramenta interna para precificação de projetos de BI, automação e sistemas. **Roda somente na Central de Pagamentos existente, sem Worker adicional.**
 
-## Endereços reais
+## Endereço e publicação
 
-**Central de Pagamentos já configurada no repositório:**
+- **Worker único:** `pagamentos-artisys-central`.
+- **Repositório:** `nutricionistaalmeidavh-spec/pagamentos-artisys`.
+- **Configuração Cloudflare:** `wrangler.jsonc`.
+- **Precificador:** https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/precificar
+- **Admin da Central:** https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/admin
 
-`https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev`
+O precificador é servido como HTML, CSS e JavaScript no mesmo Worker que já atende ao checkout e à API administrativa. A entrada `/precificar` utiliza os assets existentes; não adiciona banco, R2, segundo Worker, DNS, domínio `artisys.dev`, rota de checkout ou provedor de pagamento.
 
-O nome está em `wrangler.jsonc` e no README. O estado do site ao vivo deve ser confirmado após publicação.
+A publicação acompanha **o deploy automático da `main` já conectado ao `pagamentos-artisys-central`**. O status real do deploy deve ser conferido no Cloudflare se o link não abrir. Não configurar outra aplicação, não criar outro subdomínio e não executar deploy separado.
 
-**Nova rota no mesmo Worker (após merge e deploy):**
-
-`https://pagamentos-artisys-central.nutricionistaalmeidavh.workers.dev/precificar`
-
-**Worker independente de precificação (ainda não publicado):**
-
-`https://precificador-artisys-central.nutricionistaalmeidavh.workers.dev`
-
-Este novo nome não é um subdomínio de `pagamentos-artisys-central`: ambos são serviços irmãos na conta `nutricionistaalmeidavh.workers.dev`. Não são necessários domínios `artisys.dev`, DNS próprio, serviço pago ou mudança nos domínios da Central.
-
-## Publicação
-
-1. Revise o PR com testes e faça merge na `main`. Se o Worker central já estiver vinculado a Builds, o deploy automático da `main` atualiza **somente** o `pagamentos-artisys-central`, liberando `/precificar` na origem atual.
-2. Para ter endereço próprio, crie no Cloudflare Workers & Pages uma **segunda aplicação Worker** a partir do **mesmo repo GitHub**, com nome `precificador-artisys-central` e configuração `wrangler.precificador.jsonc`. A alternativa via CLI autenticada é `npx wrangler deploy --config wrangler.precificador.jsonc`.
-3. Esta configuração usa o binding `PRECIFICADOR_ASSETS` e o **Service Binding** `PAGAMENTOS_CENTRAL` para o Worker `pagamentos-artisys-central`. Verifique no Dashboard a existência e vínculo. O novo Worker não tem D1, R2, Asaas, cron ou secrets de cobrança.
-4. Confirme o acesso ao painel e faça login com o token administrativo existente. Login é validado pela Central via Service Binding; o Worker secundário não retorna os dados financeiros do endpoint.
-5. Não publique o endereço do Worker secundário como ativo até concluir o deploy e conferir o login.
-6. Se não desejar segundo Worker, use apenas `/precificar` na origem atual. É a versão com menor manutenção e sem recurso adicional.
-
-**Alternativa self-hosted (R$ 0 em licenças):** executar `npm start` em Node.js com SQLite local e `ADMIN_TOKEN` de 32+ caracteres; servir `/precificar` pelo mesmo servidor e, se for necessário HTTPS público, configurar reverse proxy próprio. Sem serviço externo de IA nem fontes de terceiros.
+**Alternativa self-hosted:** `npm start` com Node.js/SQLite e `ADMIN_TOKEN` de 32 caracteres ou mais. O mesmo caminho `/precificar` funciona localmente. Não há dependência obrigatória de serviço pago.
 
 ## Fluxo comercial
 
-1. Escolha um preset: BI obras, BI industrial, BI planilhas, automação ou software.
-2. Registre cliente, contato, escopo, horas estimadas de cada etapa e prazo em dias úteis.
-3. Informe **custo interno da hora**, despesas, percentual de contingência, alíquota estimada de tributos e margem de lucro desejada.
-4. Registre qualidade de dados, fontes, frequência de atualização e perfis de acesso. **Aplicar reserva sugerida** é opcional: o diagnóstico não altera automaticamente seu orçamento.
-5. Confira custo, ponto de equilíbrio, lucro, margem real, preço após desconto, investimento e retorno ilustrativo do cliente.
-6. Copie a proposta para o cliente sem informar custos internos ou exporte a estimativa JSON para arquivo privado.
+1. Selecione tipo de serviço (BI de obras, BI industrial, BI de planilhas, automação ou sistema).
+2. Informe cliente, contato, projeto, escopo, estimativa de horas por etapa e prazo.
+3. Ajuste o custo **interno** por hora, despesas extras, risco, alíquota tributária estimada, margem-alvo e desconto.
+4. Avalie quatro aspectos do diagnóstico (fontes, qualidade dos dados, atualização e permissões); o botão de contingência é opcional e explícito.
+5. Confira custo, preço sugerido, ponto de equilíbrio, impostos, lucro e margem efetiva.
+6. Copie a proposta para apresentar ao cliente sem divulgar custos internos, imprima em PDF ou salve/exporte uma cópia privada.
 
-## Fórmula comercial
+## Cálculo
 
-- Custo direto = soma(horas por etapa) × custo interno/hora + despesas adicionais.
-- Reserva de risco = custo direto × risco %.
-- Custo total = custo direto + reserva.
-- Preço-alvo = custo total / [1 - (tributos% + margem desejada%) / 100].
-- Arredondar preço para cima em múltiplos de R$ 50, em seguida aplicar eventual desconto.
-- Ponto de equilíbrio = custo total / (1 - tributos% / 100).
-- Lucro estimado = preço final - tributos estimados - custo total.
-- Margem efetiva = lucro estimado / preço final.
+- **Custo direto:** soma(horas estimadas por atividade) × custo interno/hora + despesas.
+- **Reserva de risco:** custo direto × percentual de contingência.
+- **Custo total:** custo direto + reserva.
+- **Preço-alvo:** custo total / [1 − (tributos% + margem-alvo%) / 100].
+- **Preço sugerido:** arredondamento do preço-alvo para cima em múltiplos de R$ 50.
+- **Preço final:** preço sugerido × (1 − desconto%).
+- **Ponto de equilíbrio:** custo total / (1 − tributos% / 100).
+- **Lucro previsto:** preço final − tributos estimados − custo total.
+- **Margem efetiva:** lucro previsto / preço final.
 
-**Limites:** Os percentuais são premissas do prestador, não regras tributárias. Valide a alíquota com o contador; informe custos de equipe e impostos corretamente. Retorno por economia de horas não é garantia de ROI. Proposta é estimativa não vinculante, sujeita à validação de dados e escopo.
+Margem é diferente de markup. Tributos e horas são premissas e exigem confirmação; a estimativa não substitui avaliação contábil nem a validação de escopo com o cliente. Valor mensal de suporte é opcional e não está incluído no projeto automaticamente.
 
-## Privacidade
+## Segurança e privacidade
 
-- O front-end é estático, mas entrar no painel requer token `ADMIN_TOKEN` existente, validado por `/v1/admin/summary`. Em host secundário a validação é delegada por binding.
-- Orçamentos, nomes e informações do cliente ficam **somente no localStorage do navegador** (sem criptografia, sincronização ou persistência em D1). Não devem ser usados em dispositivo compartilhado.
-- Uma sessão autorizada está em `sessionStorage` por origem. No Worker secundário é necessário autenticar novamente, pois as origens são diferentes.
-- `Exportar JSON` inclui custos internos: use apenas como backup privado. `Copiar proposta` e `Imprimir/PDF` excluem a margem interna e o custo/hora.
-- Nenhum formulário do precificador cria oferta, pedido, checkout, cobrança ou webhook.
+- O acesso administrativo é validado pelo endpoint existente `/v1/admin/summary`, usando `ADMIN_TOKEN`.
+- As estimativas e os nomes dos clientes são mantidos somente no `localStorage` do navegador; **não são criptografados nem sincronizados**. Use em equipamento privado e confiável.
+- O token fica no `sessionStorage` da mesma origem da Central; não é enviado para o cliente na proposta.
+- A exportação JSON contém custo e margem internos e deve ser guardada de forma privada. `Copiar proposta` e `Imprimir/PDF` não revelam esses detalhes.
+- A ferramenta não cria cobrança, pedido ou oferta e não mexe nos webhooks do Asaas.
 
 ## Testes
 
-`npm run check` executa testes unitários de fórmulas e rotas Node/Worker, inclusive isolamento do Worker secundário. `npm run test:worker` valida o Worker da Central em ambiente local.
+`npm run check` valida o código e as regras de preço; `npm run test:worker` testa as rotas Worker; `npm run test:ui` valida desktop/mobile no navegador. Um teste de regressão impede voltar a adicionar segundo Worker ao código do precificador.
