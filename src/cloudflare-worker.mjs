@@ -295,7 +295,7 @@ async function process(request,env,ctx){
   return send({ok:true,service:'Pagamento ArtiSys',storage:'cloudflare-d1',gatewayConfigured:!!env.ASAAS_API_KEY,asaasPixEnabled:env.ASAAS_PIX_ENABLED!=='false',manualPixConfigured:!!env.MANUAL_PIX_KEY,paymentsEnabled:env.PAYMENTS_ENABLED==='true',catalogDraftsLoaded:Number(count?.total||0)===67,releaseSyncAuth:'github-oidc-v2',devkitSyncAuth:'github-oidc-devkits-v1'});
  }
  if(method==='GET'&&['/','/admin','/comprar','/pedido','/precificar','/precificador','/assets/style.css','/assets/admin.css','/assets/admin.js','/assets/checkout.js','/assets/precificador.css','/assets/precificador.js','/assets/precificador-engine.js'].includes(path)){
-  const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':path.replace('/assets/','/');
+  const asset=['/','/comprar','/pedido'].includes(path)?'/checkout.html':path==='/admin'?'/admin.html':['/precificar','/precificador'].includes(path)?'/precificador.html':path.replace('/assets/','/');
   const url=new URL(request.url);url.pathname=asset;url.search='';
   return env.PAGAMENTO_ARTISYS_ASSETS.fetch(new Request(url.toString(),{method:'GET'}));
  }
