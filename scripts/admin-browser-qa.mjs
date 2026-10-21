@@ -137,7 +137,7 @@ try{
 
 
  // Fluxo comercial: UI de precificação no mesmo Worker, sem gerar cobranças.
- await page.goto(base+'/precificar',{waitUntil:'networkidle'});
+ await page.goto(base+'/precificar',{waitUntil:'domcontentloaded',timeout:15000});
  await page.locator('#workspace').waitFor({state:'visible'});
  await page.locator('#client').fill('Opuz Engenharia');
  await page.locator('#contact').fill('André Perin');
