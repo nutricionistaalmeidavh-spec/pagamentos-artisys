@@ -16,7 +16,7 @@ export async function forwardPdvPlatformAdmin(env,payload,{fetchImpl=fetch,now=D
   const data=payload.data;
   if(!data||typeof data!=='object'||Array.isArray(data)||
      typeof data.email!=='string'||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)||
-     !Number.isInteger(data.days)||data.days<1||data.days>3650||
+     !Number.isInteger(data.months)||data.months<1||data.months>120||
      typeof data.reason!=='string'||data.reason.trim().length<8||
      (data.tenantId!==undefined&&!/^[-_a-zA-Z0-9]{1,128}$/.test(data.tenantId)))
    problem('pdv_platform_owner_license_invalid',400);

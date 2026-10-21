@@ -126,7 +126,7 @@ function ownerLicenseModal(tenantId=''){
   '<form id="pdv-owner-license-form" class="form-stack">'+
   field('E-mail do proprietário','email',company?.ownerEmail||'','email','required maxlength="254" autocomplete="email"')+
   field('Nome do estabelecimento (opcional para conta nova)','businessName','','text','maxlength="100" placeholder="Ex.: Lanchonete Central"')+
-  field('Validade em dias, contados a partir de hoje','days','30','number','required min="1" max="3650" step="1" inputmode="numeric"')+
+  field('Validade em meses, contados a partir de hoje','months','1','number','required min="1" max="120" step="1" inputmode="numeric"')+
   field('Motivo da liberação','reason','Liberação manual autorizada pela ArtiSys','text','required minlength="8" maxlength="240"')+
   '<div class="warning-note">A licença manual não registra pagamento nem altera a assinatura no Asaas. A liberação será auditada no PDV Total.</div>'+
   '<div class="form-actions"><button class="secondary" type="button" data-close>Cancelar</button><button type="submit" class="primary">Liberar e enviar e-mail</button></div>'+
@@ -136,7 +136,7 @@ function ownerLicenseModal(tenantId=''){
  form.addEventListener('submit',event=>{
   event.preventDefault();if(!form.reportValidity())return;
   const raw=Object.fromEntries(new FormData(form).entries());
-  const data={email:raw.email.trim().toLowerCase(),days:Number(raw.days),reason:raw.reason.trim()};
+  const data={email:raw.email.trim().toLowerCase(),months:Number(raw.months),reason:raw.reason.trim()};
   if(raw.businessName.trim())data.businessName=raw.businessName.trim();
   if(company)data.tenantId=tenantId;
   withBusy(form.querySelector('[type="submit"]'),async()=>{
