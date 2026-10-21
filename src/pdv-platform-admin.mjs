@@ -6,12 +6,24 @@ export async function forwardPdvPlatformAdmin(env,payload,{fetchImpl=fetch,now=D
  if(url.protocol!=='https:'||url.pathname!=='/'||url.search||url.hash||url.username||url.password)problem('pdv_platform_url_invalid');
  const secret=env?.ARTISYS_PLATFORM_BRIDGE_SECRET;
  if(typeof secret!=='string'||secret.length<32)problem('pdv_platform_secret_not_configured');
- if(!payload||typeof payload!=='object'||Array.isArray(payload)||!['summary','tenants','audit','approve','bootstrap'].includes(payload.action))
+ if(!payload||typeof payload!=='object'||Array.isArray(payload)||!['summary','tenants','audit','approve','bootstrap','owner-license','revoke-license'].includes(payload.action))
   problem('pdv_platform_action_denied',403);
  if(payload.action==='approve'&&(typeof payload.tenantId!=='string'||!/^[-_a-zA-Z0-9]{1,128}$/.test(payload.tenantId)))
   problem('pdv_platform_tenant_invalid',400);
  if(payload.action==='bootstrap'&&(!payload.data||typeof payload.data!=='object'||Array.isArray(payload.data)))
   problem('pdv_platform_bootstrap_invalid',400);
+ if(payload.action==='owner-license'){
+  const data=payload.data;
+  if(!data||typeof data!=='object'||Array.isArray(data)||
+     typeof data.email!=='string'||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)||
+     !Number.isInteger(data.days)||data.days<1||data.days>3650||
+     typeof data.reason!=='string'||data.reason.trim().length<8||
+     (data.tenantId!==undefined&&!/^[-_a-zA-Z0-9]{1,128}$/.test(data.tenantId)))
+   problem('pdv_platform_owner_license_invalid',400);
+ }
+ if(payload.action==='revoke-license'&&
+    (typeof payload.tenantId!=='string'||!/^[-_a-zA-Z0-9]{1,128}$/.test(payload.tenantId)))
+  problem('pdv_platform_tenant_invalid',400);
  const plain=JSON.stringify(payload),timestamp=String(now()),id=nonce();
  if(plain.length>8192)problem('pdv_platform_request_too_large',413);
  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))problem('pdv_platform_nonce_invalid');
