@@ -215,7 +215,7 @@ export function createApp(options={}) {
     res.end(data);
   };
   const server=http.createServer(async(req,res)=>{
-    const url=new URL(req.url||'/', 'http://localhost'), path=url.pathname==='/'&&String(req.headers.host||'').split(':')[0]==='precificar.pagamentos.artisys.dev'?'/precificar':url.pathname,method=req.method||'GET';
+    const url=new URL(req.url||'/', 'http://localhost'), path=url.pathname,method=req.method||'GET';
     try{
       const corsOK=publicCors(req,res);
       if(method==='OPTIONS'){if(!corsOK)throw error('origin_not_allowed',403);return json(res,204,{});}
