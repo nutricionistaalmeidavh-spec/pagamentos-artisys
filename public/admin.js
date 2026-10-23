@@ -66,10 +66,32 @@ async function load(name=screen){
   }else if(name==='mais'){
    for(const id of ['integrations-content','events-content','fulfillments-content'])el(id).innerHTML='<div class="loading">Atualizando…</div>';
    const [s,h,e,f,releases]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments'),api('system-releases')]);
-   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();renderReleases(releases);await loadPdvTenants();
+   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();renderReleases(releases);await Promise.all([loadPdvTenants(),loadPdvTelemetry()]);
   }
   el('runtime-indicator').textContent=paymentsOnline()?'Cobranças habilitadas':'Cobranças desativadas';el('runtime-indicator').hidden=false;
  }catch(e){if(e.status===401){sessionStorage.removeItem(key);token='';signedIn(false);el('login-error').textContent='Sua sessão expirou. Entre novamente.';}else{showError(e,'Falha ao carregar');const id={inicio:'home-content',pedidos:'orders-list',ofertas:'offers-list',mais:'integrations-content'}[name];if(id)el(id).innerHTML=empty('Não foi possível carregar','Tente novamente usando Atualizar.');}}
+}
+async function loadPdvTelemetry(){
+ const host=el('pdv-telemetry-content');
+ if(!host)return;
+ host.innerHTML='<div class="loading">Consultando telemetria…</div>';
+ try{
+  const result=await api('pdv/telemetry');
+  const top=(result.routes||[]).slice(0,8).map(x=>
+   '<div class="card-bottom"><strong>'+esc(x.route)+'</strong><span>'+esc(x.count)+' acessos</span></div>').join('');
+  const events=(result.events||[]).slice(0,10).map(x=>
+   '<div class="card-bottom"><span>'+esc(x.eventName)+(x.outcome?' · '+esc(x.outcome):'')+'</span><span>'+esc(x.count)+' eventos</span></div>').join('');
+  const companies=(result.tenants||[]).slice(0,10).map(x=>
+   '<div class="card-bottom"><span>'+esc(x.name)+'</span><span>'+esc(x.count)+' eventos</span></div>').join('');
+  host.innerHTML='<div class="surface ops-card">'+
+   '<div class="card-top"><div><strong>'+esc(result.totalEvents)+' eventos registrados</strong><p class="muted">'+esc(result.enabledTenants)+' empresa(s) autorizando a coleta · últimos 7 dias</p></div></div>'+
+   '<h3>Telas utilizadas</h3>'+(top||'<p class="muted">Nenhuma tela registrada.</p>')+
+   '<h3>Eventos e resultados</h3>'+(events||'<p class="muted">Nenhum evento registrado.</p>')+
+   '<h3>Empresas com atividade</h3>'+(companies||'<p class="muted">Nenhuma empresa com atividade no período.</p>')+
+   '</div>';
+ }catch{
+  host.innerHTML=empty('Telemetria ainda não disponível','Verifique a integração assinada, a migração de telemetria e o consentimento do estabelecimento. Os demais módulos continuam operando.');
+ }
 }
 let pdvTenants=[];
 async function loadPdvTenants(){
@@ -626,7 +648,7 @@ document.addEventListener('click',e=>{
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}
  if(button.dataset.unpublish!==undefined){changePublication(button.dataset.unpublish,false);return;}
  if(button.id==='diagnose-asaas'){checkAsaas(button);return;}
- if(button.id==='pdv-refresh'){loadPdvTenants();return;}
+ if(button.id==='pdv-refresh'){void Promise.all([loadPdvTenants(),loadPdvTelemetry()]);return;}
  if(button.id==='pdv-owner-license-new'){ownerLicenseModal();return;}
  if(button.dataset.pdvOwnerLicense){ownerLicenseModal(button.dataset.pdvOwnerLicense);return;}
  if(button.dataset.pdvLicenseRevoke){revokeOwnerLicense(button.dataset.pdvLicenseRevoke);return;}
