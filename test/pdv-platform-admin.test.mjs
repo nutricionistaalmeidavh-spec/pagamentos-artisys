@@ -83,5 +83,7 @@ test('PDV telemetry is exposed only through the existing signed admin bridge and
  const js=readFileSync(new URL('../public/admin.js',import.meta.url),'utf8');
  assert.match(html,/pdv-telemetry-content/);
  assert.match(js,/api\('pdv\/telemetry'\)/);
+ assert.match(js,/analyticsWritesToday/);
+ assert.match(js,/analyticsCapReached/);
  assert.doesNotMatch(js,/ARTISYS_PLATFORM_BRIDGE_SECRET|CLOUDFLARE_API_TOKEN/);
 });
