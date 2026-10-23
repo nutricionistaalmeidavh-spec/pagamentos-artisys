@@ -6,7 +6,7 @@ export async function forwardPdvPlatformAdmin(env,payload,{fetchImpl=fetch,now=D
  if(url.protocol!=='https:'||url.pathname!=='/'||url.search||url.hash||url.username||url.password)problem('pdv_platform_url_invalid');
  const secret=env?.ARTISYS_PLATFORM_BRIDGE_SECRET;
  if(typeof secret!=='string'||secret.length<32)problem('pdv_platform_secret_not_configured');
- if(!payload||typeof payload!=='object'||Array.isArray(payload)||!['summary','tenants','audit','approve','bootstrap','owner-license','revoke-license'].includes(payload.action))
+ if(!payload||typeof payload!=='object'||Array.isArray(payload)||!['summary','tenants','audit','telemetry','approve','bootstrap','owner-license','revoke-license'].includes(payload.action))
   problem('pdv_platform_action_denied',403);
  if(payload.action==='approve'&&(typeof payload.tenantId!=='string'||!/^[-_a-zA-Z0-9]{1,128}$/.test(payload.tenantId)))
   problem('pdv_platform_tenant_invalid',400);
