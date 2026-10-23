@@ -85,8 +85,17 @@ async function loadPdvTelemetry(){
    '<div class="card-bottom"><span>'+esc(x.eventName)+(x.outcome?' · '+esc(x.outcome):'')+'</span><span>'+esc(x.count)+' eventos</span></div>').join('');
   const companies=(result.tenants||[]).slice(0,10).map(x=>
    '<div class="card-bottom"><span>'+esc(x.name)+'</span><span>'+esc(x.count)+' eventos</span></div>').join('');
+  const writes=Math.max(0,Number(result.analyticsWritesToday)||0);
+  const safeCap=Math.max(1,Number(result.analyticsWriteCap)||80000);
+  const freeLimit=Math.max(safeCap,Number(result.analyticsDailyLimit)||100000);
+  const capHit=Boolean(result.analyticsCapReached)||writes>=safeCap;
+  const quota='<div class="notice"><span>'+icon('shield')+'</span><div><strong>Analytics Engine · '+esc(writes.toLocaleString('pt-BR'))+
+   ' gravações hoje</strong><p>'+esc(safeCap.toLocaleString('pt-BR'))+' é o teto preventivo diário do PDV (franquia Free: '+
+   esc(freeLimit.toLocaleString('pt-BR'))+' por dia). '+(capHit?'O envio externo foi pausado; o PDV continua coletando localmente.':
+   'A coleta externa respeita o consentimento de cada empresa.')+'</p></div></div>';
   host.innerHTML='<div class="surface ops-card">'+
    '<div class="card-top"><div><strong>'+esc(result.totalEvents)+' eventos registrados</strong><p class="muted">'+esc(result.enabledTenants)+' empresa(s) autorizando a coleta · últimos 7 dias</p></div></div>'+
+   quota+
    '<h3>Telas utilizadas</h3>'+(top||'<p class="muted">Nenhuma tela registrada.</p>')+
    '<h3>Eventos e resultados</h3>'+(events||'<p class="muted">Nenhum evento registrado.</p>')+
    '<h3>Empresas com atividade</h3>'+(companies||'<p class="muted">Nenhuma empresa com atividade no período.</p>')+
