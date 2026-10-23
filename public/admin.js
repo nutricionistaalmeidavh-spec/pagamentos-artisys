@@ -66,7 +66,9 @@ async function load(name=screen){
   }else if(name==='mais'){
    for(const id of ['integrations-content','events-content','fulfillments-content'])el(id).innerHTML='<div class="loading">Atualizando…</div>';
    const [s,h,e,f,releases]=await Promise.all([api('summary'),publicStatus(),api('events'),api('fulfillments'),api('system-releases')]);
-   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();renderReleases(releases);await Promise.all([loadPdvTenants(),loadPdvTelemetry()]);
+   summary=s.summary;integrations=s.integrations||[];health=h;events=e.events||[];fulfillments=f.fulfillments||[];renderMore();renderReleases(releases);
+    if(await loadPdvTenants())await loadPdvTelemetry();
+    else el('pdv-telemetry-content').innerHTML=empty('Telemetria indisponível','Aguardando conexão do PDV TOTAL.');
   }
   el('runtime-indicator').textContent=paymentsOnline()?'Cobranças habilitadas':'Cobranças desativadas';el('runtime-indicator').hidden=false;
  }catch(e){if(e.status===401){sessionStorage.removeItem(key);token='';signedIn(false);el('login-error').textContent='Sua sessão expirou. Entre novamente.';}else{showError(e,'Falha ao carregar');const id={inicio:'home-content',pedidos:'orders-list',ofertas:'offers-list',mais:'integrations-content'}[name];if(id)el(id).innerHTML=empty('Não foi possível carregar','Tente novamente usando Atualizar.');}}
@@ -102,7 +104,7 @@ async function loadPdvTenants(){
   if(!status.configured){
    target.innerHTML=empty('PDV TOTAL não conectado','Cadastre URL e segredo de integração no Worker central. A administração financeira continua disponível.');
    audit.innerHTML='';
-   return;
+   return false;
   }
   const [list,events]=await Promise.all([api('pdv/tenants'),api('pdv/audit')]);
   pdvTenants=list.tenants||[];
@@ -125,9 +127,11 @@ async function loadPdvTenants(){
   audit.innerHTML=history.length?'<div class="surface ops-card">'+history.map(e=>
    '<div class="card-bottom"><span><strong>'+esc(e.kind)+'</strong><span class="small"> · '+esc(e.tenantId||'')+'</span></span><span class="small">'+esc(date(e.createdAt))+'</span></div>').join('')+'</div>':
    '<p class="muted">Nenhuma operação administrativa registrada.</p>';
+  return true;
  }catch{
   target.innerHTML=empty('PDV TOTAL ainda não conectado','Verifique a implantação do PDV, a migration 0036 e o segredo de integração. Os pagamentos existentes continuam operando.');
   audit.innerHTML='';
+  return false;
  }
 }
 function approvePdvTenant(id){
@@ -648,7 +652,7 @@ document.addEventListener('click',e=>{
  if(button.dataset.publish!==undefined){changePublication(button.dataset.publish,true);return;}
  if(button.dataset.unpublish!==undefined){changePublication(button.dataset.unpublish,false);return;}
  if(button.id==='diagnose-asaas'){checkAsaas(button);return;}
- if(button.id==='pdv-refresh'){void Promise.all([loadPdvTenants(),loadPdvTelemetry()]);return;}
+ if(button.id==='pdv-refresh'){void (async()=>{if(await loadPdvTenants())await loadPdvTelemetry();})();return;}
  if(button.id==='pdv-owner-license-new'){ownerLicenseModal();return;}
  if(button.dataset.pdvOwnerLicense){ownerLicenseModal(button.dataset.pdvOwnerLicense);return;}
  if(button.dataset.pdvLicenseRevoke){revokeOwnerLicense(button.dataset.pdvLicenseRevoke);return;}
