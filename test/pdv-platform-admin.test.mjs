@@ -69,3 +69,19 @@ test('manual owner license form counts calendar months, not days',()=>{
  assert.ok(ui.includes('months:Number(raw.months)'));
  assert.ok(!ui.includes('Validade em dias'));
 });
+
+test('PDV telemetry is exposed only through the existing signed admin bridge and panel',async()=>{
+ let observed;
+ const r=await forwardPdvPlatformAdmin(env,{action:'telemetry'},{fetchImpl:async(url,options)=>{
+  observed={url,options};return new Response(JSON.stringify({totalEvents:7,events:[],tenants:[],routes:[]}),{status:200});
+ },now:()=>1730000000000,nonce:()=> '87654321-aaaa-4bbb-8ccc-123456789013'});
+ assert.equal(r.status,200);
+ assert.equal((await r.json()).totalEvents,7);
+ assert.equal(JSON.parse(observed.options.body).action,'telemetry');
+ assert.match(observed.options.headers['x-artisys-platform-signature'],/^sha256=/);
+ const html=readFileSync(new URL('../public/admin.html',import.meta.url),'utf8');
+ const js=readFileSync(new URL('../public/admin.js',import.meta.url),'utf8');
+ assert.match(html,/pdv-telemetry-content/);
+ assert.match(js,/api\('pdv\/telemetry'\)/);
+ assert.doesNotMatch(js,/ARTISYS_PLATFORM_BRIDGE_SECRET|CLOUDFLARE_API_TOKEN/);
+});
