@@ -1,3 +1,4 @@
+import {pdvBillingStatus,pdvBillingStatusPath} from './pdv-billing-status.mjs';
 import http from 'node:http';
 import { readFileSync, existsSync, lstatSync, createReadStream, mkdirSync } from 'node:fs';
 import { join, resolve, basename, dirname } from 'node:path';
@@ -232,6 +233,13 @@ export function createApp(options={}) {
       if(method==='GET' && path==='/assets/checkout.js')return serve(res,'checkout.js','application/javascript; charset=utf-8');
       if(method==='GET' && path==='/v1/catalog'){
         return json(res,200,{offers:all("SELECT id,product_id,name,description,price_cents,currency,sale_type,delivery_mode FROM offers WHERE active=1 ORDER BY name").map(x=>({id:x.id,productId:x.product_id,name:x.name,description:x.description,priceCents:x.price_cents,currency:x.currency,saleType:x.sale_type,deliveryMode:x.delivery_mode}))});
+      }
+      if(path===pdvBillingStatusPath){
+        const chunks=[];let size=0;
+        for await(const chunk of req){size+=chunk.length;if(size>16000)throw error('request_too_large',413);chunks.push(chunk);}
+        const request=new Request('https://payments.local'+path,{method,headers:req.headers,...(['GET','HEAD'].includes(method)?{}:{body:Buffer.concat(chunks)})});
+        const response=await pdvBillingStatus(request,env,id=>get('SELECT o.product_id,o.status,o.checkout_state,o.fulfillment_status,b.binding FROM orders o LEFT JOIN order_buyer_bindings b ON b.order_id=o.id WHERE o.id=?',id));
+        return json(res,response.status,await response.json());
       }
       if(method==='POST' && path==='/v1/orders'){
         if(!corsOK)throw error('origin_not_allowed',403);
