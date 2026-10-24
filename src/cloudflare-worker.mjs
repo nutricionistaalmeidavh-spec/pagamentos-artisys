@@ -1,3 +1,4 @@
+import {pdvBillingStatus,pdvBillingStatusPath} from './pdv-billing-status.mjs';
 import {createCheckout,checkoutUrlForId,verifyCheckoutPayment,verifyPaymentEvent,AsaasValidationRejection} from './asaas.mjs';
 import {forwardPdvPlatformAdmin} from './pdv-platform-admin.mjs';
 import {isHubProduct,needsBuyerBinding,bindingForOffer,checkoutBinding} from './hub-buyer-binding.mjs';
@@ -301,6 +302,7 @@ async function process(request,env,ctx){
  }
  if(!path.startsWith('/v1/'))return send({error:'not_found'},404);
  await initialize(env);
+ if(path===pdvBillingStatusPath)return pdvBillingStatus(request,env,id=>one(d,'SELECT o.product_id,o.status,o.checkout_state,o.fulfillment_status,b.binding FROM orders o LEFT JOIN order_buyer_bindings b ON b.order_id=o.id WHERE o.id=?',id));
  if(method==='GET'&&path==='/v1/catalog')return json({offers:(await rows(d,"SELECT id,product_id,name,description,price_cents,currency,sale_type,delivery_mode FROM offers WHERE active=1 ORDER BY name")).map(x=>({id:x.id,productId:x.product_id,name:x.name,description:x.description,priceCents:x.price_cents,currency:x.currency,saleType:x.sale_type,deliveryMode:x.delivery_mode,variants:systemVariants(x.id)}))},200,{'access-control-allow-origin':'*'});
  if(method==='POST'&&path==='/v1/orders'){
   if(!allowedOrigin)throw fail('origin_not_allowed',403);
