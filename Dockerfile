@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3080 DB_PATH=/app/data/payments.sqlite RELEASES_DIR=/app/data/releases
 WORKDIR /app
 COPY package.json schema.sql ./
