@@ -18,7 +18,7 @@ export function verifyBridgeHmac(raw,timestamp,header,secret,now=Date.now()){
 export function normalizeShopifyOrder(p,topic,shop,eventId){
   const order=p&&typeof p==='object'?p:{};
   if(!['orders/paid','orders/cancelled','refunds/create'].includes(topic))throw Error('unsupported_shopify_topic');
-  return {source:'shopify',seller:shop,eventId,externalOrderId:trim(order.id,80),
+  return {source:'shopify',seller:shop,eventId,externalOrderId:trim(topic==='refunds/create'?(order.order_id||order.id):order.id,80),
     event:topic==='orders/paid'?'paid':topic==='orders/cancelled'?'cancelled':'refund_review',
     paymentConfirmed:order.financial_status==='paid'&&!order.cancelled_at,
     email:email(order.contact_email||order.email||order.customer?.email),
@@ -29,7 +29,7 @@ export function normalizeShopifyOrder(p,topic,shop,eventId){
 const schema=[
  'PRAGMA foreign_keys=ON',
  "CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,channel TEXT NOT NULL,seller TEXT NOT NULL,external_id TEXT NOT NULL,email TEXT NOT NULL DEFAULT '',buyer_name TEXT NOT NULL DEFAULT '',currency TEXT NOT NULL DEFAULT 'BRL',status TEXT NOT NULL CHECK(status IN ('pending','paid','cancelled')),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(channel,seller,external_id))",
- "CREATE TABLE IF NOT EXISTS entitlements(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),sku TEXT NOT NULL,seat INTEGER NOT NULL,code_hash TEXT NOT NULL UNIQUE,code_secret TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',activation_status TEXT NOT NULL DEFAULT 'awaiting_connector',max_devices INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(order_id,sku,seat))",
+ "CREATE TABLE IF NOT EXISTS entitlements(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),sku TEXT NOT NULL,seat INTEGER NOT NULL,code_hash TEXT NOT NULL UNIQUE,code_secret TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',activation_status TEXT NOT NULL DEFAULT 'awaiting_connector',max_devices INTEGER NOT NULL DEFAULT 1,native_code_secret TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(order_id,sku,seat))",
  "CREATE TABLE IF NOT EXISTS events(channel TEXT NOT NULL,event_id TEXT NOT NULL,event_type TEXT NOT NULL,order_id TEXT,created_at TEXT NOT NULL,PRIMARY KEY(channel,event_id))",
  "CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,kind TEXT NOT NULL,ref TEXT NOT NULL,payload_secret TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(kind,ref))",
  "CREATE TABLE IF NOT EXISTS portal_tokens(token_hash TEXT PRIMARY KEY,email TEXT NOT NULL,expires_at INTEGER NOT NULL,used_at TEXT,created_at INTEGER NOT NULL)",
@@ -39,10 +39,11 @@ const schema=[
  'CREATE INDEX IF NOT EXISTS outbox_status ON outbox(status,created_at)'
 ].join(';')+';';
 
-export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.now}={}){
+export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.now,publicBaseUrl=''}={}){
   const key=Buffer.from(String(masterKey??''),'base64');
   if(key.length!==32)throw Error('LICENSE_MASTER_KEY must contain 32 random bytes encoded in base64');
   const db=new DatabaseSync(dbPath);db.exec(schema);
+  if(!db.prepare('PRAGMA table_info(entitlements)').all().some(x=>x.name==='native_code_secret'))db.exec('ALTER TABLE entitlements ADD COLUMN native_code_secret TEXT');
   const products=Object.fromEntries(Object.entries(catalog).filter(([sku,p])=>validSku(sku)&&p&&typeof p==='object'&&Number.isInteger(p.maxDevices)&&p.maxDevices>=1&&p.maxDevices<=100));
   const encrypt=(value)=>{const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);
     const enc=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);
@@ -97,8 +98,11 @@ export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.no
           created++;
         }
       }
-      if(created)enqueue('crm.sale',order.id,{source:channel,externalOrderId:orderKey,email:buyer,buyerName:trim(v.name,160),
-        skus:db.prepare('SELECT sku FROM entitlements WHERE order_id=?').all(order.id).map(r=>r.sku)});
+      if(created){
+        enqueue('crm.sale',order.id,{source:channel,externalOrderId:orderKey,email:buyer,buyerName:trim(v.name,160),
+          skus:db.prepare('SELECT sku FROM entitlements WHERE order_id=?').all(order.id).map(r=>r.sku)});
+        if(publicBaseUrl){const link=createPortalLink(buyer,publicBaseUrl);if(link)enqueue('portal.email',sha(link),{email:buyer,link})}
+      }
       return {duplicate:false,created,status:'paid'};
     });
   }
@@ -106,7 +110,7 @@ export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.no
     const who=email(buyerEmail);if(!validEmail(who))return [];
     return db.prepare('SELECT e.*,o.channel,o.external_id FROM entitlements e JOIN orders o ON o.id=e.order_id WHERE o.email=? ORDER BY e.created_at DESC')
       .all(who).map(r=>({id:r.id,sku:r.sku,code:decrypt(r.code_secret),status:r.status,activationStatus:r.activation_status,
-        maxDevices:r.max_devices,createdAt:r.created_at,source:r.channel,orderId:r.external_id,downloadUrl:products[r.sku]?.downloadUrl||null}));
+        maxDevices:r.max_devices,activationCode:r.native_code_secret?decrypt(r.native_code_secret):null,createdAt:r.created_at,source:r.channel,orderId:r.external_id,downloadUrl:products[r.sku]?.downloadUrl||null}));
   }
   function createPortalLink(buyerEmail,baseUrl){
     const who=email(buyerEmail);
@@ -144,11 +148,12 @@ export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.no
     .all(Math.max(1,Math.min(50,Number(limit)||10))).map(row=>({...row,payload:decrypt(row.payload_secret)}));
   const markJob=(id,status,error='')=>{
     if(!['sent','retry','waiting_configuration'].includes(status))throw Error('invalid_job_status');
-    db.prepare('UPDATE outbox SET status=?,attempts=attempts+1,last_error=?,updated_at=? WHERE id=?').run(status,String(error).slice(0,220),stamp(),id);
+    db.prepare('UPDATE outbox SET status=?,attempts=attempts+?,last_error=?,updated_at=? WHERE id=?').run(status,status==='waiting_configuration'?0:1,String(error).slice(0,220),stamp(),id);
   };
-  const nativeAccepted=(job)=>{if(!['product.grant','product.revoke'].includes(job.kind))return;
-    db.prepare('UPDATE entitlements SET activation_status=?,updated_at=? WHERE id=?')
-      .run(job.kind==='product.grant'?'provisioned':'revoked',stamp(),job.ref)};
+  const nativeAccepted=(job,answer={})=>{if(!['product.grant','product.revoke'].includes(job.kind))return;
+    const activationCode=trim(answer.activationCode,120);
+    db.prepare('UPDATE entitlements SET activation_status=?,native_code_secret=?,updated_at=? WHERE id=?')
+      .run(job.kind==='product.grant'?'provisioned':'revoked',activationCode?encrypt(activationCode):null,stamp(),job.ref)};
   return {db,catalog:products,receive,listLicenses,createPortalLink,requestPortalAccess,consumePortalToken,sessionEmail,logout,listJobs,pendingJobs,markJob,nativeAccepted,close:()=>db.close()};
 }
 export async function dispatchJobs(core,config,{fetchImpl=fetch,limit=10}={}){
@@ -171,7 +176,8 @@ export async function dispatchJobs(core,config,{fetchImpl=fetch,limit=10}={}){
       if(!response.ok)throw Error('connector_http_'+response.status);
       const answer=await response.json().catch(()=>({}));
       if(answer.accepted!==true)throw Error('connector_ack_missing');
-      core.markJob(job.id,'sent');core.nativeAccepted(job);out.push({id:job.id,status:'sent'});
+      if(job.kind==='product.grant'&&!String(answer.activationCode||'').trim()&&!target.acceptsCoreCode)throw Error('native_activation_code_missing');
+      core.markJob(job.id,'sent');core.nativeAccepted(job,answer);out.push({id:job.id,status:'sent'});
     }catch(error){core.markJob(job.id,'retry',error?.message||'delivery_failed');out.push({id:job.id,status:'retry'})}
   }
   return out;
