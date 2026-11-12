@@ -75,7 +75,11 @@ test('P4: admin-generated magic link creates HttpOnly session; buyer sees own li
     assert.match(session,/HttpOnly/);
     const me=await fetch(url+'/v1/portal/licenses',{headers:{cookie:session.split(';')[0]}});
     assert.equal(me.status,200);
-    assert.equal((await me.json()).licenses.length,1);
+    const buyerLicenses=(await me.json()).licenses;
+    assert.equal(buyerLicenses.length,1);
+    // Não retornar chave provisória pelo JSON enquanto licença nativa não foi liberada.
+    assert.equal(buyerLicenses[0].code,null);
+    assert.equal(buyerLicenses[0].activationCode,null);
     const replay=await fetch(url+'/portal/claim?token='+encodeURIComponent(token),{redirect:'manual'});
     assert.equal(replay.headers.get('location'),'/portal?invalid=1');
   }finally{await close()}
