@@ -21,9 +21,11 @@ async function showLicences(){
       lic.activationStatus==='revocation_pending'?'Revogação solicitada ao sistema original':lic.activationStatus;
     item.append(label('p',description,'muted'));
     const codeRow=document.createElement('div');codeRow.className='code-row';
-    const code=label('code',lic.code);codeRow.append(code);
+    const ready=lic.activationStatus==='provisioned';
+    const code=label('code',ready?(lic.activationCode||lic.code):'Aguardando ativação');codeRow.append(code);
     const copy=label('button','Copiar código','secondary');copy.type='button';
-    copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(lic.code);copy.textContent='Copiado'});
+    copy.disabled=!ready;
+    copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(lic.activationCode||lic.code);copy.textContent='Copiado'});
     codeRow.append(copy);item.append(codeRow);
     item.append(label('p','Canal: '+lic.source+' · Dispositivos previstos: '+lic.maxDevices,'muted compact'));
     const href=safeLink(lic.downloadUrl);
