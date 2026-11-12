@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createCore,verifyShopifyHmac,verifyBridgeHmac,normalizeShopifyOrder,dispatchJobs} from './core.mjs';
+import {handlePdvNativeDelivery} from './native-pdv.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const portalHtml=fs.readFileSync(path.join(here,'../public/portal.html'));
@@ -100,6 +101,14 @@ export function createHandler(core,config={}){
         }
         return json(res,404,{error:'not_found'});
       }
+      if(method==='POST'&&route==='/v1/internal/pdv-bridge'){
+        const raw=await readRaw(req,65536);
+        const result=await handlePdvNativeDelivery({
+          core,config,raw,timestamp:req.headers['x-artisys-timestamp'],
+          signature:req.headers['x-artisys-signature']
+        });
+        return json(res,result.status,result.body);
+      }
       if(method==='POST'&&route==='/v1/webhooks/shopify'){
         if(!shop||!config.shopifyClientSecret)return json(res,503,{error:'shopify_not_configured'});
         const raw=await readRaw(req);
@@ -182,6 +191,9 @@ export function run(env=process.env){
     mercadoLivreSellerId:env.MERCADOLIVRE_SELLER_ID,
     paymentsBridgeSecret:env.PAYMENTS_BRIDGE_SECRET,
     paymentsProductSkus:readJsonEnv(env.PAYMENTS_PRODUCT_SKUS_JSON,{}),
+    pdvBridgeSecret:env.PDV_BRIDGE_SECRET,
+    pdvNativeAdminToken:env.PDV_NATIVE_ADMIN_TOKEN,
+    pdvNativeBaseUrl:env.PDV_NATIVE_BASE_URL,
     crmConnector:readJsonEnv(env.CRM_CONNECTOR_JSON,null),
     mailConnector:readJsonEnv(env.MAIL_CONNECTOR_JSON,null),
     productConnectors:readJsonEnv(env.PRODUCT_CONNECTORS_JSON,{})
