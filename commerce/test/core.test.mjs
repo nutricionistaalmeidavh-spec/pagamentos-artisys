@@ -116,3 +116,15 @@ test('P2: repeated line items of same SKU issue one entitlement per purchased se
     assert.equal(new Set(keys).size,3);
   }finally{core.close()}
 });
+
+test('P2: cancelled sale supersedes queued activation to prevent late license grants',()=>{
+  const core=fixture();
+  try{
+    core.receive(paid({eventId:'paid-then-cancelled'}));
+    assert.ok(core.pendingJobs().some(j=>j.kind==='product.grant'));
+    core.receive({...paid(),eventId:'cancel-after-paid',event:'cancelled'});
+    assert.equal(core.pendingJobs().filter(j=>j.kind==='product.grant').length,0);
+    assert.equal(core.listLicenses('comprador@example.com')[0].status,'revoked');
+    assert.ok(core.pendingJobs().some(j=>j.kind==='product.revoke'));
+  }finally{core.close()}
+});
