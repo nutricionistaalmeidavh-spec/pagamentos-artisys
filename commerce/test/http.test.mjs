@@ -11,7 +11,8 @@ async function setup(){
     catalog:{'ARTISYS-PDV-NEXUS':{maxDevices:1,productKey:'pdvnexus'}}
   });
   const config={shopifyStoreDomain:'85pits-mq.myshopify.com',shopifyClientSecret:'test-shop-secret',
-    adminToken:'a'.repeat(48),publicBaseUrl:'http://127.0.0.1:8789',mercadoLivreBridgeSecret:'test-ml-secret'};
+    adminToken:'a'.repeat(48),publicBaseUrl:'http://127.0.0.1:8789',mercadoLivreBridgeSecret:'test-ml-secret',
+    paymentsBridgeSecret:'payments-secret-32-characters-minimum',paymentsProductSkus:{'pdvnexus':'ARTISYS-PDV-NEXUS'}};
   const server=http.createServer(createHandler(core,config));
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const url='http://127.0.0.1:'+server.address().port;
@@ -96,4 +97,44 @@ test('P5: market bridge requires timestamped HMAC and no unknown SKU is granted'
     assert.equal(core.listLicenses('ml@example.com').length,1);
     assert.ok(core.listJobs().some(x=>x.kind==='crm.sale'));
   }finally{await close()}
+});
+
+test('P5: current Pagamentos ArtiSys fulfillment contract never ACKs before native activation',async()=>{
+  const {core,url,config,close}=await setup();
+  try{
+    const data={event:'artisys.license.activate',orderId:'pending-payment-1',productId:'pdvnexus',
+      email:'payer@example.com',customerName:'Cliente',idempotencyKey:'fulfillment-1',currency:'BRL'};
+    const raw=JSON.stringify(data),ts=String(Date.now()),signature='sha256='+
+      createHmac('sha256',config.paymentsBridgeSecret).update(ts+'.'+raw).digest('hex');
+    const response=await fetch(url+'/v1/ingest/artisys-payments/connector',{method:'POST',
+      headers:{'content-type':'application/json','x-artisys-timestamp':ts,'x-artisys-signature':signature},body:raw});
+    assert.equal(response.status,409);
+    assert.equal((await response.json()).accepted,false);
+    assert.equal(core.listLicenses('payer@example.com').length,1);
+    assert.equal(core.listLicenses('payer@example.com')[0].activationStatus,'awaiting_connector');
+  }finally{await close()}
+});
+test('P5: connector ACK requires native product code; verified code is shown to buyer',async()=>{
+  const {core,url,config,close}=await setup();
+  const native=http.createServer(async(req,res)=>{
+    const body=await new Promise(resolve=>{let text='';req.on('data',part=>text+=part);req.on('end',()=>resolve(text))});
+    assert.ok(String(body).includes('"event":"product.grant"'));
+    res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({accepted:true,activationCode:'654321'}));
+  });
+  await new Promise(resolve=>native.listen(0,'127.0.0.1',resolve));
+  try{
+    config.productConnectors={'ARTISYS-PDV-NEXUS':{
+      url:'http://127.0.0.1:'+native.address().port+'/license',secret:'product-secret-32-characters-minimum'
+    }};
+    const data={event:'artisys.license.activate',orderId:'paid-2',productId:'pdvnexus',
+      email:'buyer2@example.com',customerName:'Comprador',idempotencyKey:'fulfillment-2',currency:'BRL'};
+    const raw=JSON.stringify(data),ts=String(Date.now()),signature='sha256='+
+      createHmac('sha256',config.paymentsBridgeSecret).update(ts+'.'+raw).digest('hex');
+    const response=await fetch(url+'/v1/ingest/artisys-payments/connector',{method:'POST',
+      headers:{'content-type':'application/json','x-artisys-timestamp':ts,'x-artisys-signature':signature},body:raw});
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).accepted,true);
+    assert.equal(core.listLicenses('buyer2@example.com')[0].activationCode,'654321');
+    assert.equal(core.listLicenses('buyer2@example.com')[0].activationStatus,'provisioned');
+  }finally{await new Promise(resolve=>native.close(resolve));await close()}
 });
