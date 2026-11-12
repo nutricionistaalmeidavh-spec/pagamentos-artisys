@@ -7,6 +7,7 @@ import {createCore,verifyShopifyHmac,verifyBridgeHmac,normalizeShopifyOrder,disp
 const here=path.dirname(fileURLToPath(import.meta.url));
 const portalHtml=fs.readFileSync(path.join(here,'../public/portal.html'));
 const portalJs=fs.readFileSync(path.join(here,'../public/portal.js'));
+const portalCss=fs.readFileSync(path.join(here,'../public/portal.css'));
 const bool=(v)=>v===true||v==='true';
 const baseHeaders={
   'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer',
@@ -60,6 +61,10 @@ export function createHandler(core,config={}){
         res.writeHead(200,{...baseHeaders,'content-type':'text/html; charset=utf-8',
           'content-security-policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"});
         return res.end(portalHtml);
+      }
+      if(method==='GET'&&route==='/portal.css'){
+        res.writeHead(200,{...baseHeaders,'content-type':'text/css; charset=utf-8'});
+        return res.end(portalCss);
       }
       if(method==='GET'&&route==='/portal.js'){
         res.writeHead(200,{...baseHeaders,'content-type':'text/javascript; charset=utf-8','content-security-policy':"default-src 'none'"});
