@@ -114,6 +114,32 @@ export function createHandler(core,config={}){
         const normalized=normalizeShopifyOrder(parseObject(raw),topic,shop,eventId);
         return json(res,200,{ok:true,...core.receive(normalized)});
       }
+      if(method==='POST'&&route==='/v1/ingest/artisys-payments/connector'){
+        if(!config.paymentsBridgeSecret)return json(res,503,{error:'bridge_not_configured'});
+        const raw=await readRaw(req);
+        if(!verifyBridgeHmac(raw,req.headers['x-artisys-timestamp'],req.headers['x-artisys-signature'],config.paymentsBridgeSecret))
+          return json(res,401,{error:'invalid_signature'});
+        const data=parseObject(raw),sku=config.paymentsProductSkus?.[data.productId];
+        if(!sku||!core.catalog[sku])return json(res,409,{error:'product_not_mapped'});
+        const event=data.event==='artisys.license.activate'?'paid':
+          data.event==='artisys.license.revoke'?'cancelled':null;
+        if(!event)return json(res,422,{error:'unsupported_payment_connector_event'});
+        if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.email||''))||!data.orderId||!data.idempotencyKey)
+          return json(res,422,{error:'invalid_payment_connector'});
+        const inbound={source:'artisys-payments',seller:'pagamentos-artisys-central',
+          eventId:String(data.idempotencyKey),externalOrderId:String(data.orderId),
+          event,paymentConfirmed:event==='paid',email:data.email,name:data.customerName,
+          currency:data.currency||'BRL',lines:[{sku,quantity:1}]};
+        const outcome=core.receive(inbound);
+        if(core.pendingJobs().some(j=>j.kind==='product.grant'&&j.payload.orderId===String(data.orderId)))
+          await dispatchJobs(core,config);
+        const licences=core.listLicenses(data.email).filter(lic=>lic.source==='artisys-payments'&&lic.orderId===String(data.orderId)&&lic.sku===sku);
+        const done=event==='paid'?licences.some(lic=>lic.activationStatus==='provisioned'):
+          licences.length>0&&licences.every(lic=>lic.activationStatus==='revoked');
+        // Central de Pagamentos só pode marcar como delivered após ACK do licenciador nativo.
+        return done?json(res,200,{accepted:true,duplicate:outcome.duplicate||false}):
+          json(res,409,{accepted:false,error:'native_product_activation_pending'});
+      }
       if(method==='POST'&&['/v1/ingest/mercadolivre','/v1/ingest/artisys-payments'].includes(route)){
         const isMl=route.endsWith('/mercadolivre');
         const secret=isMl?config.mercadoLivreBridgeSecret:config.paymentsBridgeSecret;
@@ -155,6 +181,7 @@ export function run(env=process.env){
     mercadoLivreBridgeSecret:env.MERCADOLIVRE_BRIDGE_SECRET,
     mercadoLivreSellerId:env.MERCADOLIVRE_SELLER_ID,
     paymentsBridgeSecret:env.PAYMENTS_BRIDGE_SECRET,
+    paymentsProductSkus:readJsonEnv(env.PAYMENTS_PRODUCT_SKUS_JSON,{}),
     crmConnector:readJsonEnv(env.CRM_CONNECTOR_JSON,null),
     mailConnector:readJsonEnv(env.MAIL_CONNECTOR_JSON,null),
     productConnectors:readJsonEnv(env.PRODUCT_CONNECTORS_JSON,{})
