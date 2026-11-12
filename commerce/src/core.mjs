@@ -34,6 +34,7 @@ const schema=[
  "CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,kind TEXT NOT NULL,ref TEXT NOT NULL,payload_secret TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(kind,ref))",
  "CREATE TABLE IF NOT EXISTS portal_tokens(token_hash TEXT PRIMARY KEY,email TEXT NOT NULL,expires_at INTEGER NOT NULL,used_at TEXT,created_at INTEGER NOT NULL)",
  "CREATE TABLE IF NOT EXISTS portal_sessions(session_hash TEXT PRIMARY KEY,email TEXT NOT NULL,expires_at INTEGER NOT NULL,created_at TEXT NOT NULL)",
+ "CREATE TABLE IF NOT EXISTS native_pdv_links(license_id TEXT PRIMARY KEY,sku TEXT NOT NULL,product TEXT NOT NULL,native_id TEXT NOT NULL,email TEXT NOT NULL,code_secret TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
  'CREATE INDEX IF NOT EXISTS entitlements_order ON entitlements(order_id)',
  'CREATE INDEX IF NOT EXISTS orders_email ON orders(email)',
  'CREATE INDEX IF NOT EXISTS outbox_status ON outbox(status,created_at)'
@@ -163,7 +164,7 @@ export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.no
     const activationCode=trim(answer.activationCode,120);
     db.prepare('UPDATE entitlements SET activation_status=?,native_code_secret=?,updated_at=? WHERE id=?')
       .run(job.kind==='product.grant'?'provisioned':'revoked',activationCode?encrypt(activationCode):null,stamp(),job.ref)};
-  return {db,catalog:products,receive,listLicenses,createPortalLink,requestPortalAccess,consumePortalToken,sessionEmail,logout,listJobs,pendingJobs,markJob,nativeAccepted,close:()=>db.close()};
+  return {db,catalog:products,receive,listLicenses,createPortalLink,requestPortalAccess,consumePortalToken,sessionEmail,logout,listJobs,pendingJobs,markJob,nativeAccepted,encryptSecret:encrypt,decryptSecret:decrypt,close:()=>db.close()};
 }
 export async function dispatchJobs(core,config,{fetchImpl=fetch,limit=10}={}){
   const out=[];
