@@ -86,9 +86,16 @@ export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.no
         return {duplicate:false,created:0,pendingReview:event==='paid'&&!validEmail(buyer)};
       if(order.status!=='paid')db.prepare("UPDATE orders SET status='paid',email=?,buyer_name=?,currency=?,updated_at=? WHERE id=?").run(buyer,trim(v.name||order.buyer_name,160),trim(v.currency||order.currency,8),stamp(),order.id);
       let created=0;
+      // Carrinhos podem ter várias linhas com o mesmo SKU: somar assentos antes da deduplicação.
+      const quantities=new Map();
       for(const line of Array.isArray(v.lines)?v.lines.slice(0,80):[]){
-        const sku=trim(line.sku,90).toUpperCase(),product=products[sku],qty=Number(line.quantity);
-        if(!product||!Number.isSafeInteger(qty)||qty<1||qty>20)continue;
+        const sku=trim(line.sku,90).toUpperCase(),qty=Number(line.quantity);
+        if(!products[sku]||!Number.isSafeInteger(qty)||qty<1||qty>20)continue;
+        quantities.set(sku,(quantities.get(sku)||0)+qty);
+      }
+      if([...quantities.values()].some(q=>q>100)||[...quantities.values()].reduce((a,b)=>a+b,0)>200)throw Error('quantity_requires_manual_review');
+      for(const [sku,qty] of quantities){
+        const product=products[sku];
         for(let seat=1;seat<=qty;seat++){
           if(db.prepare('SELECT id FROM entitlements WHERE order_id=? AND sku=? AND seat=?').get(order.id,sku,seat))continue;
           const id=randomUUID(),code=createLicenseKey();
