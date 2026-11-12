@@ -47,6 +47,18 @@ A API usa o corpo bruto e X-Shopify-Hmac-Sha256, compara em tempo constante, con
 
 Produtos já criados na Shopify estão em rascunho; não são ativados nem publicados por este módulo. Preços e SKU precisam ser revistos antes da publicação. O webhook só cria direito de uso quando um pedido realmente pago incluir SKU presente no commerce/catalog.json.
 
+## Configuração oficial de webhooks da Shopify
+
+Os webhooks **não podem ser criados pelo token da integração ChatGPT**, porque pertenceriam a outro aplicativo e a assinatura HMAC não corresponderia à instalação ArtiSys. A integração deve pertencer a um aplicativo próprio criado no **Shopify Dev Dashboard**, instalado na loja com escopos `read_orders` (e campos protegidos de clientes quando habilitados). Para essa loja, utilize app próprio e o client credentials grant de loja da mesma organização. Mantenha credenciais privadas.
+
+1. Aponte `PUBLIC_BASE_URL` para o HTTPS público que chega ao Commerce Core, com TLS e proxy protegendo `/v1/internal/*` e `/v1/admin/*`.
+2. Configure `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` no ambiente privado do Commerce Core. O secret utilizado para HMAC é o do **mesmo app** que emite os webhooks.
+3. Execute em ambiente seguro `node scripts/shopify-webhooks.mjs` com essas variáveis, **somente após** o servidor público e o aplicativo instalado existirem. O script consulta webhooks existentes, evita registros duplicados e recusa trocar um endpoint já registrado sem revisão.
+4. Confirme no painel do app da Shopify os tópicos orders/paid, orders/cancelled e refunds/create, e faça os testes de entrega com payload assinado.
+5. Não publique os sete produtos em rascunho até a homologação de ponta a ponta.
+
+O script usa GraphQL Admin API versão 2026-10 e o OAuth client credentials grant (token temporário), sem serviços pagos novos e sem armazenar token no Git. Referências: https://shopify.dev/docs/apps/build/webhooks/subscribe e https://shopify.dev/docs/apps/build/authentication-authorization/client-credentials-grant.
+
 ## P4 — área do comprador
 
 - GET /portal: área web mobile-first com login por link temporário.
