@@ -1,0 +1,25 @@
+name: Commerce Core P2-P5 QA
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'commerce/**'
+      - '.github/workflows/commerce-core-qa.yml'
+permissions:
+  contents: read
+jobs:
+  zero-cost-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax and isolated tests
+        run: npm run check
+        working-directory: commerce
+      - name: Ensure no deployment or cloud integration in QA
+        run: |
+          test ! -f commerce/.env
+          test ! -f commerce/data/commerce.sqlite
