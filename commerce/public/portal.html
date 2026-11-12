@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Minhas licenças · ArtiSys</title>
+<link rel="stylesheet" href="/portal.css">
+<script src="/portal.js" defer></script>
+</head>
+<body>
+<main class="shell">
+<header class="top"><a class="brand" href="/portal"><span class="brand-symbol" aria-hidden="true">A</span><strong>ArtiSys</strong></a><span class="product">Central de Licenças</span></header>
+<section class="hero">
+  <span class="eyebrow">PORTAL DO CLIENTE</span>
+  <h1>Seus softwares, em um só lugar.</h1>
+  <p>Consulte licenças, códigos de ativação e downloads autorizados. Os direitos de uso são independentes do canal em que você comprou.</p>
+</section>
+<section class="panel" id="login-panel" aria-labelledby="login-title">
+  <h2 id="login-title">Acessar minhas compras</h2>
+  <p>Informe o mesmo e-mail utilizado no pedido. Um link temporário será enviado se houver licença vinculada.</p>
+  <form id="login-form">
+    <label for="buyer-email">E-mail da compra</label>
+    <div class="form-row"><input id="buyer-email" name="email" type="email" required autocomplete="email" placeholder="seuemail@exemplo.com"><button type="submit" id="send-link">Solicitar acesso</button></div>
+  </form>
+  <p class="muted" id="login-message" role="status" aria-live="polite"></p>
+</section>
+<section class="panel hidden" id="licences-panel" aria-labelledby="licences-title">
+  <div class="panel-head"><div><span class="eyebrow">BIBLIOTECA DIGITAL</span><h2 id="licences-title">Minhas licenças</h2><p id="buyer-identity" class="muted"></p></div><button id="logout" class="secondary" type="button">Sair</button></div>
+  <div id="licences-list" class="licence-list" aria-live="polite"></div>
+  <p class="muted footnote">Uma licença exibida aqui pode continuar aguardando a liberação no aplicativo original. Essa informação é indicada em cada produto.</p>
+</section>
+<footer>ArtiSys · Gestão de licenças e entregas digitais</footer>
+</main>
+</body>
+</html>
