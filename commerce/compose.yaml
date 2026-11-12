@@ -1,0 +1,22 @@
+services:
+  commerce-core:
+    build:
+      context: ..
+      dockerfile: commerce/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8789
+      LICENSE_DB_PATH: /data/commerce.sqlite
+    ports:
+      - "127.0.0.1:8789:8789"
+    volumes:
+      - artisys_commerce_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  artisys_commerce_data: {}
