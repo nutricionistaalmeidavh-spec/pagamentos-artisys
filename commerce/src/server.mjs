@@ -76,7 +76,7 @@ export function createHandler(core,config={}){
       }
       if(method==='GET'&&route==='/v1/portal/licenses'){
         const email=core.sessionEmail(decodeURIComponent(cookie(req)));
-        return email?json(res,200,{email,licenses:core.listLicenses(email)}):json(res,401,{error:'authentication_required'});
+        return email?json(res,200,{email,licenses:core.listLicenses(email).map(lic=>({...lic,code:lic.activationStatus==='provisioned'&&lic.status==='active'?lic.code:null,activationCode:lic.activationStatus==='provisioned'&&lic.status==='active'?lic.activationCode:null}))}):json(res,401,{error:'authentication_required'});
       }
       if(method==='POST'&&route==='/v1/portal/logout'){
         core.logout(decodeURIComponent(cookie(req)));return respondRedirect(res,'/portal',null);
