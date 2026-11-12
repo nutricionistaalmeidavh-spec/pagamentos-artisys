@@ -74,6 +74,10 @@ Use MERCADOLIVRE_SELLER_ID para restringir o vendedor esperado. Dados fictícios
 
 POST /v1/ingest/artisys-payments aceita o mesmo contrato, alterando source para artisys-payments e usando PAYMENTS_BRIDGE_SECRET separado. O produtor deve confirmar liquidação na Central de Pagamentos; comprovante do usuário ou order pending não é fonte de pagamento.
 
+### Ligação com a Central existente de Pagamentos ArtiSys
+
+A Central de Pagamentos já emite callbacks assinados no formato artisys.license.activate/ artisys.license.revoke. Para ela, utilize POST /v1/ingest/artisys-payments/connector, com PAYMENTS_BRIDGE_SECRET correspondente ao secret individual do PRODUCT_CONNECTORS_JSON configurado na central, e PAYMENTS_PRODUCT_SKUS_JSON mapeando productId para os SKUs do Commerce Core. A rota só responde {"accepted":true} depois de o adaptador do software original ter confirmado a licença nativa. Enquanto isso, retorna HTTP 409 para manter o fulfillment pendente na Central (não altera pagamentos confirmados). Não sobrescreva segredos nem conectores existentes sem validação explícita.
+
 ### WppProspector CRM
 
 O Commerce Core gera evento crm.sale por pedido pago com email, channel, orderId e SKUs e crm.sale_revoked por cancelamento. O endereço/secret são exclusivamente CRM_CONNECTOR_JSON. A implementação receptora no WppProspector deve preservar leads.phone canônico: nunca inferir um telefone, criar um lead, vincular conversa ou enviar WhatsApp a partir de apenas um e-mail de checkout. Armazenar vendas externas separadamente, com deduplicação por canal e número do pedido, e vincular por identidade verificada somente com consentimento.
