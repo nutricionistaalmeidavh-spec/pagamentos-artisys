@@ -146,7 +146,7 @@ export function run(env=process.env){
   const catalog=JSON.parse(fs.readFileSync(path.join(here,'../catalog.json'),'utf8'));
   const dbPath=env.LICENSE_DB_PATH||path.join(process.cwd(),'data','commerce.sqlite');
   fs.mkdirSync(path.dirname(dbPath),{recursive:true});
-  const core=createCore({dbPath,masterKey:env.LICENSE_MASTER_KEY,catalog});
+  const core=createCore({dbPath,masterKey:env.LICENSE_MASTER_KEY,catalog,publicBaseUrl:env.PUBLIC_BASE_URL||'http://127.0.0.1:8789'});
   const config={
     publicBaseUrl:env.PUBLIC_BASE_URL||'http://127.0.0.1:8789',
     adminToken:env.COMMERCE_ADMIN_TOKEN,
