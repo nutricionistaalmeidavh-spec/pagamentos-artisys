@@ -108,3 +108,13 @@ O receptor valida signature e replay e só responde {"accepted":true,"activation
 Executar npm run check, validar o PR e homologar em ambiente separado: pedido pendente, pago, replay, cancelado, estorno parcial, mudança de SKU, e-mail ausente, falha de conexão, ativação nativa, acesso e revogação. Também validar política LGPD, logs sem dados sensíveis, HTTPS, backup, domínio, relay de e-mail e permissão da Shopify.
 
 **Não é um deploy de produção.** A branch/PR não altera secrets nem variáveis da instalação atual. Não fazer merge automático na main enquanto faltarem integrações nativas e testes reais assinados.
+
+## Ponte P2: licenciador nativo do PDV e Oficina
+
+O endpoint interno `POST /v1/internal/pdv-bridge` oferece compatibilidade com a Central comercial existente, que emite **códigos de 6 dígitos com 48 horas**. Ele é independente do código interno de 16 caracteres do Commerce Core. Sem credenciais ele retorna HTTP 503 e não emite licença.
+
+O conector verifica o HMAC recebido com `PDV_BRIDGE_SECRET`; inicia sessão na Central existente usando o `PDV_NATIVE_ADMIN_TOKEN` somente no backend; consulta se já existe licença ativa para aquele e-mail/produto; impede substituí-la; e cria um vínculo local criptografado por `licenseId` antes de liberar o código nativo ao comprador. No cancelamento altera apenas a licença nativa comprovadamente criada por esse vínculo. Caso o POST remoto tenha resultado incerto, trava com `native_manual_reconciliation_required` e **não reemite** automaticamente.
+
+Para ativar, configure segredo privado e URL HTTPS em `PDV_BRIDGE_SECRET`, `PDV_NATIVE_ADMIN_TOKEN`, `PDV_NATIVE_BASE_URL`. Aponte ambos SKUs `ARTISYS-PDV-DESKTOP` e `ARTISYS-OFICINA-DESKTOP` em `PRODUCT_CONNECTORS_JSON` para `http://127.0.0.1:8789/v1/internal/pdv-bridge` com o mesmo segredo HMAC. Essa URL é loopback do processo, não endpoint de exposição pública; proteja no proxy reverso e não publique o caminho interno na internet. **Não sobrescreva credenciais existentes**.
+
+Os demais produtos, incluindo NutriDesk, Obra, Nexus e Financeiro, preservam seus próprios licenciadores; não há ativação automática falsa. Eles exigem adaptadores específicos antes da venda.
