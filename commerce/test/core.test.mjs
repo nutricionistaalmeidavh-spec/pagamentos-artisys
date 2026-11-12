@@ -101,3 +101,18 @@ test('P5: CRM and native fulfilment outbox are distinct; no automatic external a
   assert.equal(jobs.some(j=>j.status==='sent'),false);
   core.close();
 });
+
+test('P2: repeated line items of same SKU issue one entitlement per purchased seat',()=>{
+  const core=fixture();
+  try{
+    const receipt=paid({lines:[
+      {id:'line-A',sku:'ARTISYS-PDV-NEXUS',quantity:1},
+      {id:'line-B',sku:'ARTISYS-PDV-NEXUS',quantity:2}
+    ]});
+    const result=core.receive(receipt);
+    assert.equal(result.created,3);
+    assert.equal(core.listLicenses('comprador@example.com').length,3);
+    const keys=core.listLicenses('comprador@example.com').map(x=>x.code);
+    assert.equal(new Set(keys).size,3);
+  }finally{core.close()}
+});
