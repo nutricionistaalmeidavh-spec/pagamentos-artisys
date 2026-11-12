@@ -76,6 +76,8 @@ export function createCore({dbPath=':memory:',masterKey,catalog={},clock=Date.no
       if(event==='refund_review'){enqueue('payment.refund_review',order.id+':'+eventId,{source:channel,seller,orderKey,eventId});return {duplicate:false,created:0,review:true}}
       if(event==='cancelled'){
         db.prepare("UPDATE orders SET status='cancelled',updated_at=? WHERE id=?").run(stamp(),order.id);
+        // Uma compra cancelada não pode liberar uma licença ainda presa na outbox.
+        db.prepare("UPDATE outbox SET status='superseded',updated_at=? WHERE kind='product.grant' AND status!='sent' AND ref IN (SELECT id FROM entitlements WHERE order_id=?)").run(stamp(),order.id);
         db.prepare("UPDATE entitlements SET status='revoked',activation_status='revocation_pending',updated_at=? WHERE order_id=? AND status!='revoked'").run(stamp(),order.id);
         for(const lic of db.prepare('SELECT id,sku FROM entitlements WHERE order_id=?').all(order.id))
           enqueue('product.revoke',lic.id,{licenseId:lic.id,sku:lic.sku,source:channel,orderId:orderKey});
