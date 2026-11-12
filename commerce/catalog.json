@@ -1,0 +1,40 @@
+{
+  "ARTISYS-PDV-DESKTOP": {
+    "name": "ArtiSys PDV Desktop",
+    "productKey": "pdv-artisys",
+    "maxDevices": 1,
+    "downloadUrl": "https://github.com/nutricionistaalmeidavh-spec/PDV-ARTISYS/releases/download/v2.0.12/ArtiSys-PDV-2.0.12-x64-Setup.exe"
+  },
+  "ARTISYS-PDV-NEXUS": {
+    "name": "PDV Nexus",
+    "productKey": "pdvnexus",
+    "maxDevices": 1,
+    "downloadUrl": "https://github.com/nutricionistaalmeidavh-spec/PDVNexus/releases/download/pdv-v2.0.4/PDV-Nexus-Setup-2.0.4.exe"
+  },
+  "ARTISYS-FINANCEIRO-DESKTOP": {
+    "name": "ArtiSys Financeiro Desktop",
+    "productKey": "financeiro",
+    "maxDevices": 1
+  },
+  "ARTISYS-OBRA-DESKTOP": {
+    "name": "Obra na Mão Desktop",
+    "productKey": "obra-na-mao",
+    "maxDevices": 1,
+    "downloadUrl": "https://github.com/nutricionistaalmeidavh-spec/OBRANAMAOCOMERCIAL/releases/download/desktop-commercial-v2.1.4/Obra-na-Mao-Desktop-Setup-2.1.4.exe"
+  },
+  "ARTISYS-OFICINA-DESKTOP": {
+    "name": "ArtiSys Oficina",
+    "productKey": "oficina",
+    "maxDevices": 1
+  },
+  "ARTISYS-ASSISTENCIA-OS": {
+    "name": "ArtiSys Assistência Técnica",
+    "productKey": "assistencia-tecnica",
+    "maxDevices": 1
+  },
+  "ARTISYS-ALMOXARIFADO": {
+    "name": "ArtiSys Almoxarifado",
+    "productKey": "almoxarifado",
+    "maxDevices": 1
+  }
+}
