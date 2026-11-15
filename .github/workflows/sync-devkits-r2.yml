@@ -22,6 +22,8 @@ concurrency:
 
 jobs:
   validate:
+    # Arquivado: não validar, montar nem enviar os kits ao R2.
+    if: ${{ false }}
     name: Validar manifesto 63 kits + 8 pacotes
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +43,7 @@ jobs:
   upload:
     name: Copiar 71 ZIPs existentes ao R2 privado por OIDC
     needs: validate
-    if: github.ref == 'refs/heads/main'
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
